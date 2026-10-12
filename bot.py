@@ -23,6 +23,12 @@ apihelper.RETRY_ON_ERROR = True
 TELEGRAM_BOT_TOKEN = "8613504216:AAEn_PHleVmn7BAnBPKhz8qpwI-5t-h2LxQ"
 import random
 
+GROQ_API_KEY = "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"
+GROQ_MODELS = [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b"
+]
+
 OPENROUTER_KEYS = [
     "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",
     "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",
@@ -407,6 +413,45 @@ def should_respond(message, bot_username):
 
     return False
 
+def try_groq(system_prompt, user_prompt):
+    """Priority 1: Ultra-fast Groq LPU inference (~0.3s response)."""
+    for model in GROQ_MODELS:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 150
+        }
+        try:
+            t0 = time.time()
+            res = http_session.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=4
+            )
+            if res.status_code == 200:
+                result = res.json()
+                msg = result.get("choices", [{}])[0].get("message", {})
+                raw = msg.get("content") or ""
+                cleaned = re.sub(r"<think>.*?</think>", "", str(raw), flags=re.DOTALL).strip()
+                if cleaned:
+                    dt = time.time() - t0
+                    logging.info(f"⚡ Replied via Groq Ultra-Fast [{model}] in {dt:.2f}s")
+                    return cleaned
+            elif res.status_code == 429:
+                logging.warning(f"Groq [{model}] 429 rate limit. Rotating to OpenRouter...")
+                break
+        except Exception as e:
+            logging.warning(f"Groq [{model}] error: {e}")
+    return None
+
 def try_openrouter_key(api_key, system_prompt, user_prompt):
     key_short = api_key[:12] + "..." + api_key[-4:]
     for model in OPENROUTER_MODELS:
@@ -476,25 +521,30 @@ def try_gemini(system_prompt, user_prompt):
 
 def call_ai(system_prompt, user_prompt):
     """
-    Randomized Multi-Engine Load Balancer:
-    - 4x OpenRouter Accounts + Google Gemini Studio
-    - Randomly picks an engine/key for each request
-    - Automatically falls back across all available keys & providers on failure or 429
+    Multi-Tier AI Pipeline:
+    1. Groq (PRIORITY #1: Ultra-fast ~0.3s responses, 14,400 daily requests)
+    2. OpenRouter (PRIORITY #2: 4x Accounts Pool on Groq limit/busy)
+    3. Google Gemini Studio (PRIORITY #3: Reliable Fallback)
     """
-    providers = [("openrouter", k) for k in OPENROUTER_KEYS] + [("gemini", None)]
-    random.shuffle(providers)
+    # 1. Primary: Groq LPU
+    reply = try_groq(system_prompt, user_prompt)
+    if reply:
+        return reply
 
-    for p_type, key in providers:
-        if p_type == "openrouter":
-            reply = try_openrouter_key(key, system_prompt, user_prompt)
-            if reply:
-                return reply
-        elif p_type == "gemini":
-            reply = try_gemini(system_prompt, user_prompt)
-            if reply:
-                return reply
+    # 2. Secondary: OpenRouter Pool (shuffled across 4 keys)
+    shuffled_keys = list(OPENROUTER_KEYS)
+    random.shuffle(shuffled_keys)
+    for key in shuffled_keys:
+        reply = try_openrouter_key(key, system_prompt, user_prompt)
+        if reply:
+            return reply
 
-    raise RuntimeError("All AI providers and keys exhausted")
+    # 3. Ultimate Fallback: Google Gemini Studio
+    reply = try_gemini(system_prompt, user_prompt)
+    if reply:
+        return reply
+
+    raise RuntimeError("All AI providers (Groq, OpenRouter, Gemini) exhausted")
 
 @bot.channel_post_handler(content_types=['document', 'text', 'audio', 'video'])
 def handle_channel_post(message):
@@ -619,7 +669,7 @@ if __name__ == "__main__":
     print(f"  Bot Name     : {bot_info.first_name}")
     print(f"  Bot Username : @{bot_info.username}")
     print(f"  Cataloged    : {len(ALL_ROMS)} files from @{CHANNEL_USERNAME}")
-    print("  AI Engines   : 4x OpenRouter Accounts + Google Gemini Studio (Randomized Load Balancer)")
+    print("  AI Engines   : Groq LPU (Primary) + 4x OpenRouter + Google Gemini (Triple Fallback)")
     print(f"  Trigger Names: {', '.join(BOT_NAMES)}")
     print("  Verb Filter  : Active ('to flash', 'flash firmware' ignored)")
     print("  Firmware     : RUI2 (RM6785) vs RUI3 (salaa) Strict Matcher")
