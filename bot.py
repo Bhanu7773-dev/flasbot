@@ -634,8 +634,14 @@ def handle_group_message(message):
                 logging.info(f"Could not copy directly ({copy_err}), link delivered.")
             return
 
-        # CONVERSATIONAL BANTER / ROASTING
-        chat_dialogue = "\n".join([f"{u}: {t}" for u, t in recent_history])
+        # CONVERSATIONAL BANTER / ROASTING (CLEAN & LASER-FOCUSED CONTEXT)
+        # 1. Direct reply context (if user replied to another message)
+        reply_context = ""
+        if message.reply_to_message:
+            rep_sender = message.reply_to_message.from_user.first_name or "Someone"
+            rep_text = message.reply_to_message.caption or message.reply_to_message.text or ""
+            if rep_text:
+                reply_context = f'In direct reply to {rep_sender}: "{rep_text}"\n'
 
         system_instruction = (
             "You are Flash (also known as Billu), a witty, brutally sarcastic, and chill tech-savvy friend "
@@ -644,21 +650,18 @@ def handle_group_message(message):
             "- Speak naturally with witty sarcasm, playful banter, and punchy jokes.\n"
             "- Roast people playfully if they insult you or ask silly questions.\n"
             "- Keep replies short, casual, and punchy (1 to 2 short sentences max).\n"
-            "- Always reply directly in the context of what was just asked or joked about."
+            "- CRITICAL: Answer ONLY what the user asked you. DO NOT mix in, summarize, or mention unrelated conversations from other members unless asked."
         )
 
-        user_prompt = f"""Recent group conversation:
----
-{chat_dialogue}
----
-
-{user_name} asks: "{text}"
-
-Reply sarcastically and in context (1-2 sentences):"""
+        if reply_context:
+            user_prompt = f"""{reply_context}{user_name} asks: "{text}"\n\nReply sarcastically in context (1-2 sentences):"""
+        else:
+            user_prompt = f"""{user_name} asks you: "{text}"\n\nReply sarcastically (1-2 sentences):"""
 
         try:
             reply = call_ai(system_instruction, user_prompt)
             bot.reply_to(message, reply)
+            save_chat_message(chat_id, "Flash", reply)
         except Exception as e:
             logging.error(f"Error answering user: {e}")
             bot.reply_to(message, "Dimag ka fuse udd gaya ek second ke liye, dubara pooch!")
