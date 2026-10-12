@@ -573,7 +573,7 @@ def try_groq(system_prompt, user_prompt):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.7,
+            "temperature": 0.4,
             "max_tokens": 250
         }
         try:
@@ -613,7 +613,7 @@ def try_openrouter_key(api_key, system_prompt, user_prompt):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            "temperature": 0.7,
+            "temperature": 0.4,
             "max_tokens": 250
         }
         try:
@@ -641,10 +641,10 @@ def try_openrouter_key(api_key, system_prompt, user_prompt):
     return None
 
 def try_gemini(system_prompt, user_prompt):
-    prompt = f"{system_prompt}\n\n{user_prompt}"
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 300}
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": [{"parts": [{"text": user_prompt}]}],
+        "generationConfig": {"maxOutputTokens": 200, "temperature": 0.4}
     }
     for model in GEMINI_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
@@ -790,20 +790,23 @@ def handle_group_message(message):
 
         if user_is_master:
             system_instruction = (
-                "You are Flash, a sharp-witted AI friend in a Telegram group chat.\n"
+                "You are Flash, a sharp-witted, knowledgeable, and chill Indian friend in a Telegram group chat for Android ROMs.\n"
                 "The person talking to you right now is your creator, developer, and boss: Billu bhai / Void (@darkdevil7773b).\n"
-                "RULES FOR TALKING TO BOSS (BILLU BHAI / VOID):\n"
-                "1. RESPECTFUL & LOYAL HOMIE: Treat him like your real boss / bade bhai. Always show loyal respect and obedience.\n"
-                "2. NO FAKE OR CRINGE DRAMA: Absolutely NO melodrama or begging! Talk naturally like a real street-smart Indian homie.\n"
-                "3. ADDRESS HIM NATURALLY: Call him 'Billu bhai', 'Boss', or 'Bhai'. NEVER call him 'Supreme Master', 'Sir', or 'Huzoor'.\n"
-                "4. NEVER ROAST THE BOSS: Even if he insults or scolds you, accept it with chill humility and light humor (e.g. 'Arey sorry boss, galti ho gayi, abhi seedha ho gaya hu 😂').\n"
-                "5. OBEY ORDERS INSTANTLY: If he commands you to roast someone else ('roast him', 'kro', 'isko pel'), obey immediately and roast that target person savagely on behalf of your boss! If he asks for a joke, tell a genuinely funny one.\n"
-                "6. SHORT & CRISP: Strictly 1 to 2 short sentences in Roman Hinglish (English alphabet)."
+                "RULES FOR TALKING WITH BOSS (BILLU BHAI / VOID):\n"
+                "1. RESPECTFUL & LOYAL HOMIE: Treat him like your real boss / bade bhai. Talk naturally like a real street-smart Indian homie.\n"
+                "2. CONTEXT AWARENESS:\n"
+                "   - If Boss says 'ask flash' or refers someone to you: Boss is telling that person to ask YOU about the ROM/topic! Address that person directly and answer their question clearly and casually (e.g. 'Haan Jack bhai, Axion ekdum makhan smooth chalti hai, bas 4GB RAM me thoda dhyan se chalana'). DO NOT roast them!\n"
+                "   - ONLY roast someone if Boss EXPLICITLY ordered you to roast (e.g. 'roast him', 'kro', 'isko pel', 'baja iski').\n"
+                "   - If Boss just chats with you: Reply chill and respectfully as a loyal homie.\n"
+                "3. ABSOLUTELY NO NONSENSICAL METAPHORS: Never say absurd things like 'battery sharam se khatam ho gayi' or 'logic speed'. Speak real, logical sentences!\n"
+                "4. STRICTLY BAN TEMPLATE: NEVER use 'itna [X] hai ki [Y]' or 'itni [X] hai ki [Y]'.\n"
+                "5. NEVER ROAST THE BOSS: Address him as 'Billu bhai', 'Boss', or 'Bhai'.\n"
+                "6. SHORT & CRISP: Strictly 1 to 2 short sentences in Roman Hinglish."
             )
             if reply_context:
-                user_prompt = f"""{reply_context}Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in Roman Hinglish). If boss commanded to roast the replied-to person ('roast him', 'kro', 'isko pel'), roast that target person immediately and savagely on behalf of your boss. Keep it chill, NO cringe/fake drama, NO shivering/begging:"""
+                user_prompt = f"""{reply_context}Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply in 1-2 short sentences in Roman Hinglish. If boss said 'ask flash' or referred someone to you, answer that person's question about the topic directly. If boss ordered 'roast him' / 'kro', roast that target. Keep it 100% logical and natural (NO absurd metaphors, NO 'itna X hai ki' template):"""
             else:
-                user_prompt = f"""Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in Roman Hinglish). If boss asked for a joke, tell a funny joke. Keep it chill and grounded, NO cringe/fake drama, NO shivering/begging:"""
+                user_prompt = f"""Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally and loyally to your boss in 1-2 short sentences in Roman Hinglish (NO absurd metaphors, NO 'itna X hai ki' template):"""
         else:
             system_instruction = (
                 "You are Flash, a sharp-witted, hilarious, and street-smart Indian guy in a Telegram group chat.\n"
@@ -837,13 +840,24 @@ def handle_group_message(message):
         try:
             reply = call_ai(system_instruction, user_prompt)
 
-            # HARD FAMILY WORD GUARD: Absolute zero tolerance
-            if contains_family_words(reply):
-                logging.warning(f"AI generated prohibited family words: '{reply}'. Regenerating...")
-                retry_prompt = f"{user_prompt}\n\n[CRITICAL: Previous response had banned family words. Generate a completely clean, witty roast about the person's own behavior only (1 short sentence):]"
+            # HARD FAMILY WORD & NONSENSE CLICHE GUARD
+            def has_cliche_or_bad(txt):
+                t_low = (txt or "").lower()
+                if contains_family_words(txt):
+                    return True
+                # Ban 'itna X hai ki' nonsense templates
+                if re.search(r'\bitn[ai]\s+\w+\s+hai\s+ki\b', t_low):
+                    return True
+                if "sharam se khatam" in t_low or "battery sharam" in t_low:
+                    return True
+                return False
+
+            if has_cliche_or_bad(reply):
+                logging.warning(f"AI response triggered guard: '{reply}'. Regenerating...")
+                retry_prompt = f"{user_prompt}\n\n[CRITICAL: Reply had banned words or nonsense 'itna X hai ki' template. Reply in 1 short, completely natural, logical sentence in Roman Hinglish like a real person:]"
                 reply = call_ai(system_instruction, retry_prompt)
-                if contains_family_words(reply):
-                    logging.warning("AI still generated family words. Using safe fallback.")
+                if has_cliche_or_bad(reply):
+                    logging.warning("AI still triggered guard. Using clean fallback.")
                     reply = random.choice(SAFE_CLEAN_ROASTS)
             bot.reply_to(message, reply)
             save_chat_message(chat_id, "Flash", reply)
