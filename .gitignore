@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+channel_export.json
+user_raw.txt
+flash_memory.db
