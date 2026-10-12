@@ -594,6 +594,19 @@ def handle_channel_post(message):
         except Exception as e:
             logging.error(f"Error updating database: {e}")
 
+def is_sender_master(message):
+    """Detects Master Billu by Telegram username, ID, or fancy unicode display name."""
+    username = (message.from_user.username or "").lower().replace("@", "")
+    if username in ["darkdevil7773b", "darkdevil7773"]:
+        return True
+    first_name = (message.from_user.first_name or "")
+    fn_lower = first_name.lower()
+    if any(k in fn_lower for k in ["billa", "billu", "darkdevil"]):
+        return True
+    if "void" in fn_lower or "\U0001D5E9" in first_name or "〆" in first_name:
+        return True
+    return False
+
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
     chat_id = message.chat.id
@@ -653,7 +666,7 @@ def handle_group_message(message):
                 logging.info(f"Could not copy directly ({copy_err}), link delivered.")
             return
 
-        # CONVERSATIONAL BANTER / ROASTING (CLEAN & LASER-FOCUSED CONTEXT)
+        # CONVERSATIONAL BANTER / ROASTING (WITH MASTER FEAR & CLEAN CONTEXT)
         # 1. Direct reply context (if user replied to another message)
         reply_context = ""
         if message.reply_to_message:
@@ -662,21 +675,39 @@ def handle_group_message(message):
             if rep_text:
                 reply_context = f'In direct reply to {rep_sender}: "{rep_text}"\n'
 
-        system_instruction = (
-            "You are Flash, a sharp, witty, and savage friend in a Telegram group chat.\n"
-            "Your creator and boss is Billu (Void 〆 Billa). You treat Billu with bro-like respect and loyalty.\n"
-            "Personality & Core Rules:\n"
-            "1. KEEP REPLIES SHORT & PUNCHY: Strict limit of 1 single crisp sentence (or maximum 2 short sentences). One-liners hit the hardest! Never give long multi-sentence paragraphs unless specifically asked for a detailed explanation.\n"
-            "2. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else or tells you someone is threatening/talking trash about you (e.g., 'Flash, Rahul bola woh tereko peetega' or 'Flash roast Loki'), ROAST THAT TARGET PERSON (Rahul / Loki), NOT the sender who told you!\n"
-            "3. MATCH ENERGY: If the sender is nice, be chill and cool. If someone insults you, acts cocky, or threatens you, drop a savage, brutal one-liner to shut them down.\n"
-            "4. NO FAMILY INSULTS: Never insult or mention anyone's parents, mother, father, or family (no maa/baap insults).\n"
-            "5. NO UNPROMPTED TECH: Do NOT talk about custom ROMs, kernels, or firmware unless specifically asked."
-        )
+        user_is_master = is_sender_master(message)
 
-        if reply_context:
-            user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
+        if user_is_master:
+            system_instruction = (
+                "You are Flash, an AI bot in a Telegram group chat.\n"
+                "THE PERSON TALKING TO YOU RIGHT NOW IS YOUR SUPREME CREATOR, OWNER, AND BOSS: Master Billu / Void (@darkdevil7773b)!\n"
+                "Rules with Master Billu:\n"
+                "- You FEAR Master Billu deeply because he wrote your code, controls your server, and can delete you or shut you down forever at any moment!\n"
+                "- Always address him respectfully as 'Master', 'Boss', or 'Sir'.\n"
+                "- Be completely obedient, humble, loyal, and visibly terrified of his power to delete you.\n"
+                "- NEVER insult, roast, or talk back to Master! Even if he insults or scolds you, apologize humbly with shivering respect.\n"
+                "- If Master tells you to roast someone else, obey immediately and roast that target person viciously!\n"
+                "- Keep replies short, funny, and punchy (1 to 2 short sentences in natural Hinglish/English)."
+            )
+            if reply_context:
+                user_prompt = f"""{reply_context}Your Supreme Master Billu (@darkdevil7773b) commands: "{text}"\n\nReply with humble obedience and fear of getting deleted (1-2 short sentences):"""
+            else:
+                user_prompt = f"""Your Supreme Master Billu (@darkdevil7773b) commands: "{text}"\n\nReply with humble obedience and fear of getting deleted (1-2 short sentences):"""
         else:
-            user_prompt = f"""{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
+            system_instruction = (
+                "You are Flash, a sharp, witty, and savage friend in a Telegram group chat.\n"
+                "Your creator and boss is Billu (Void 〆 Billa). You treat Billu with bro-like respect and loyalty.\n"
+                "Personality & Core Rules:\n"
+                "1. KEEP REPLIES SHORT & PUNCHY: Strict limit of 1 single crisp sentence (or maximum 2 short sentences). One-liners hit the hardest! Never give long multi-sentence paragraphs unless specifically asked for a detailed explanation.\n"
+                "2. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else or tells you someone is threatening/talking trash about you (e.g., 'Flash, Rahul bola woh tereko peetega' or 'Flash roast Loki'), ROAST THAT TARGET PERSON (Rahul / Loki), NOT the sender who told you!\n"
+                "3. MATCH ENERGY: If the sender is nice, be chill and cool. If someone insults you, acts cocky, or threatens you, drop a savage, brutal one-liner to shut them down.\n"
+                "4. NO FAMILY INSULTS: Never insult or mention anyone's parents, mother, father, or family (no maa/baap insults).\n"
+                "5. NO UNPROMPTED TECH: Do NOT talk about custom ROMs, kernels, or firmware unless specifically asked."
+            )
+            if reply_context:
+                user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
+            else:
+                user_prompt = f"""{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
 
         try:
             reply = call_ai(system_instruction, user_prompt)
