@@ -161,6 +161,13 @@ KNOWN_BRANDS = [
     "pixelos", "pixelplus", "corvus", "ancient", "dotos", "arrow", "yuri"
 ]
 
+FILE_KEYWORDS = [
+    "rom", "kernel", "recovery", "twrp", "pbrp", "orangefox", "ofox",
+    "shrp", "firmware", "boot img", "boot.img", "bootimage", "boot_img",
+    "vendor", "fastboot", "spft", "c.19", "c.18", "c.17", "flashable"
+]
+
+
 def normalize_text(t):
     """Fixes typos, Hinglish slang, and shorthand names."""
     t = (t or "").lower()
@@ -234,6 +241,19 @@ def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
     # Negative exclusions
     negatives = extract_negatives(q_norm)
     clean_q = re.sub(r'\b(?:not|without|no|dont\s+want|except)\s+[^,\.\?!]+', '', q_norm).strip()
+
+    # STRICT GUARD: Only search if user explicitly asks for a ROM/Kernel/Recovery or mentions a brand/reply
+    has_brand = any(b in clean_q for b in KNOWN_BRANDS)
+    has_file_kw = any(fk in clean_q for fk in FILE_KEYWORDS)
+    is_reply_to_file = False
+    if reply_to_text:
+        r_low = reply_to_text.lower()
+        if any(b in r_low for b in KNOWN_BRANDS + FILE_KEYWORDS) or ".zip" in r_low or ".img" in r_low:
+            is_reply_to_file = True
+
+    if not has_brand and not has_file_kw and not is_reply_to_file:
+        return [], None
+
 
     # 1. Detect Brand
     detected_brand = None
@@ -609,8 +629,8 @@ def handle_group_message(message):
             "rui2", "rui3", "salaa", "wali", "nikal", "nikalke", "axion"
         ])
 
-        # GUARANTEED PRECISE FILE DELIVERY
-        if matches and is_file_request:
+        # GUARANTEED PRECISE FILE DELIVERY (ONLY WHEN RELEVANT FILE REQUESTED)
+        if matches:
             best = matches[0]
             cap = best.get('caption', '').strip()
             details = f"\n_{cap}_" if cap else ""
