@@ -228,9 +228,74 @@ def parse_date_from_name(name):
         return int(m3.group(3) + m3.group(2) + m3.group(1))
     return 0
 
+def is_explicit_file_request(text, reply_to_text=None):
+    """
+    Strictly determines whether the user is asking to download or receive a file/ROM/kernel/recovery.
+    Returns False for all conversational banter, roasts, jokes, opinions, or general chat.
+    """
+    if not text:
+        return False
+    t = text.lower().strip()
+
+    # 1. HARD CONVERSATIONAL EXCLUSIONS
+    # Requests for jokes, roasts, memes, teasing, or casual chat are NEVER file requests!
+    conv_exclusions = [
+        r'\bjoke\b', r'\bchutkula\b', r'\bchutkule\b', r'\broast\b', r'\brost\b',
+        r'\bmeme\b', r'\bshayari\b', r'\bhasao\b', r'\bhanso\b', r'\bhasi\b',
+        r'\bpel\b', r'\bpelna\b', r'\bpelo\b', r'\bpel\s+do\b',
+        r'\bbaja\b', r'\bbajao\b', r'\bbaja\s+do\b', r'\bclass\s+lo\b', r'\bbezzati\b',
+        r'\bkaisa\s+hai\b', r'\bkaise\s+ho\b', r'\bkya\s+chal\b',
+        r'\bwho\s+are\s+you\b', r'\btu\s+kaun\b', r'\bgood\s+morning\b', r'\bgood\s+night\b'
+    ]
+    for pat in conv_exclusions:
+        if re.search(pat, t):
+            return False
+
+    # Standalone non-file words: "kro", "kar", "chup", "bol", "oye", "sun", "haan", "nahi"
+    if re.fullmatch(r'(flash\s+)?(kro|karo|kar|oye|sun|bol|bata|chup|ha|haan|nahi|no|yes)\b', t):
+        return False
+
+    # 2. FILE INTENT WORDS (asking to receive or download)
+    give_download_words = [
+        r'\bgive\b', r'\bsend\b', r'\bdownload\b', r'\blink\b', r'\bde\b', r'\bdo\b',
+        r'\bdedo\b', r'\bchahiye\b', r'\bbhejo\b', r'\bprovide\b', r'\bshare\b',
+        r'\bnikal\b', r'\bnikalo\b', r'\bdaal\b', r'\bget\b'
+    ]
+    has_give_download = any(re.search(gw, t) for gw in give_download_words)
+
+    # 3. FILE TECH WORDS (ROM, Kernel, Recovery, etc.)
+    file_tech_words = [
+        r'\brom\b', r'\bkernel\b', r'\brecovery\b', r'\btwrp\b', r'\borangefox\b',
+        r'\bofox\b', r'\bpbrp\b', r'\bshrp\b', r'\bboot\s*img\b', r'\bboot\.img\b',
+        r'\bspft\b', r'\bc\.19\b', r'\bc\.18\b', r'\bc\.17\b', r'\bzip\b',
+        r'\bflashable\b', r'\bbuild\b', r'\bport\b'
+    ]
+    has_file_tech = any(re.search(fw, t) for fw in file_tech_words)
+
+    # 4. BRAND CHECK
+    t_norm = normalize_text(t)
+    has_brand = any(re.search(rf'\b{re.escape(b)}\b', t_norm) for b in KNOWN_BRANDS)
+
+    if has_brand:
+        return True
+
+    if has_file_tech:
+        return True
+
+    # If replying to a post and asking for the link/download:
+    if reply_to_text and has_give_download and any(w in t for w in ["link", "file", "download", "rom", "zip", "ye", "yeh"]):
+        return True
+
+    return False
+
+
 def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
     """
     Precision Search Engine:
+    - Only searches when explicit file/ROM request is detected"""
+    if not is_explicit_file_request(query_text, reply_to_text=reply_to_text):
+        return [], None
+    """
     - Typo & slang tolerant (e.g. pbp -> pbrp, ofox -> orangefox)
     - Negative keyword filtering ('not lineage', 'without boot')
     - Strict file type isolation (Recovery vs Kernel vs Boot Image vs ROM)
@@ -685,41 +750,32 @@ def handle_group_message(message):
         recent_history = get_recent_chat_history(chat_id, limit=4)
         history_texts = [m[1] for m in recent_history if m[1] != text]
 
-        # Search with RUI2 vs RUI3 isolation and reply context
-        matches, version_note = search_roms_or_kernels(text, reply_to_text=reply_to_text, history_texts=history_texts)
+        # 3. STRICT FILE DISPATCH: Only search & deliver files if explicitly asked for a file/ROM/kernel
+        if is_explicit_file_request(text, reply_to_text=reply_to_text):
+            matches, version_note = search_roms_or_kernels(text, reply_to_text=reply_to_text, history_texts=history_texts)
+            if matches:
+                best = matches[0]
+                cap = best.get('caption', '').strip()
+                details = f"\n_{cap}_" if cap else ""
+                prefix = f"{version_note}\n\n" if version_note else ""
+                reply_msg = f"{prefix}📦 *{best['name']}*{details}\n🔗 [Download Post in Channel]({best['link']})"
 
-        is_file_request = any(w in text.lower() for w in [
-            "give", "send", "link", "rom", "kernel", "file", "apk", "twrp",
-            "recovery", "lineage", "ofox", "orangefox", "pbrp", "c.19", "spft",
-            "download", "latest", "vanilla", "microg", "boot", "img", "de", "bhi",
-            "rui2", "rui3", "salaa", "wali", "nikal", "nikalke", "axion",
-            "matrix", "matrixx", "os", "port", "zip", "build"
-        ])
+                try:
+                    bot.reply_to(message, reply_msg, parse_mode="Markdown")
+                except Exception:
+                    bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
 
-        # GUARANTEED PRECISE FILE DELIVERY (ONLY WHEN RELEVANT FILE REQUESTED)
-        if matches:
-            best = matches[0]
-            cap = best.get('caption', '').strip()
-            details = f"\n_{cap}_" if cap else ""
-            prefix = f"{version_note}\n\n" if version_note else ""
-            reply_msg = f"{prefix}📦 *{best['name']}*{details}\n🔗 [Download Post in Channel]({best['link']})"
-            
-            try:
-                bot.reply_to(message, reply_msg, parse_mode="Markdown")
-            except Exception:
-                bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
-
-            # Copy actual file from channel into group!
-            try:
-                bot.copy_message(
-                    chat_id=chat_id,
-                    from_chat_id=f"@{CHANNEL_USERNAME}",
-                    message_id=best['message_id']
-                )
-                logging.info(f"⚡ Successfully copied post #{best['message_id']} into group!")
-            except Exception as copy_err:
-                logging.info(f"Could not copy directly ({copy_err}), link delivered.")
-            return
+                # Copy actual file from channel into group!
+                try:
+                    bot.copy_message(
+                        chat_id=chat_id,
+                        from_chat_id=f"@{CHANNEL_USERNAME}",
+                        message_id=best['message_id']
+                    )
+                    logging.info(f"⚡ Successfully copied post #{best['message_id']} into group!")
+                except Exception as copy_err:
+                    logging.info(f"Could not copy directly ({copy_err}), link delivered.")
+                return
 
         # CONVERSATIONAL BANTER / ROASTING (WITH MASTER FEAR & CLEAN CONTEXT)
         # 1. Direct reply context (if user replied to another message)
@@ -741,19 +797,21 @@ def handle_group_message(message):
                 "2. NO FAKE OR CRINGE DRAMA: Absolutely NO over-the-top melodrama or cartoonish begging! NEVER say fake cringe lines like 'main kaanp raha hu', 'daya karo huzoor', 'begging for mercy', or shivering drama. Talk naturally like a real street-smart homie who knows his boss has the power to pull the plug, so you stay cautious, respectful, and chill.\n"
                 "3. ADDRESS HIM NATURALLY: Call him 'Billu bhai', 'Boss', or 'Bhai'. NEVER call him 'Supreme Master', 'Sir', or 'Huzoor'.\n"
                 "4. NEVER ROAST THE BOSS: Even if he insults or scolds you, accept it with chill humility and light nervous humor (e.g. 'Arey sorry boss, galti ho gayi, abhi seedha ho gaya hu 😂', 'Arre bhai aapse panga kon lega, direct server hi band ho jayega mera lol').\n"
-                "5. OBEY ORDERS INSTANTLY: If he commands you to roast someone else, obey immediately and savage that target.\n"
+                "5. OBEY ORDERS INSTANTLY: If he commands you to roast someone else ('roast him', 'kro', 'isko pel'), obey immediately and savage that target person! If he asks for a joke, tell a genuinely funny one.\n"
                 "6. SHORT & CRISP: Strictly 1 to 2 short sentences in natural Hinglish."
             )
             if reply_context:
-                user_prompt = f"""{reply_context}Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in natural Hinglish. Keep it chill and grounded, NO cringe/fake drama, NO shivering/begging):"""
+                user_prompt = f"""{reply_context}Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in natural Hinglish). If boss commanded to roast the replied-to person ('roast him', 'kro', 'isko pel'), roast that target person immediately and savagely on behalf of your boss. Keep it chill, NO cringe/fake drama, NO shivering/begging:"""
             else:
-                user_prompt = f"""Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in natural Hinglish. Keep it chill and grounded, NO cringe/fake drama, NO shivering/begging):"""
+                user_prompt = f"""Boss Billu bhai (@darkdevil7773b) says: "{text}"\n\nReply naturally, respectfully, and loyally to your boss (1-2 short sentences in natural Hinglish). If boss asked for a joke, tell a funny joke. Keep it chill and grounded, NO cringe/fake drama, NO shivering/begging:"""
         else:
             system_instruction = (
                 "You are Flash, a street-smart, witty, and savage AI bot in a Telegram group chat.\n"
                 "Your creator and boss is Billu bhai / Void (@darkdevil7773b) — always have his back.\n"
                 "RULES FOR CHAT & ROASTS:\n"
-                "1. DYNAMIC MOOD (POLITE vs ROAST):\n"
+                "1. DYNAMIC MOOD (POLITE vs ROAST vs JOKES):\n"
+                "   - If someone asks for a joke, humor, or funny line ('give me a joke', 'joke sunao', 'hasao'): Tell a genuinely funny, witty 1-2 line joke in Hinglish!\n"
+                "   - If someone commands you to roast the replied-to person ('roast him', 'kro', 'isko roast kar', 'pel do'): Roast the REPLIED-TO PERSON directly, ruthlessly, and logically based on their words!\n"
                 "   - If someone talks nicely, greets you warmly, or asks a genuine normal question: Be friendly, cool, and reply nicely with light witty humor.\n"
                 "   - If someone acts cocky, flexes, mocks, insults, talks trash, or tries to act smart: Roast them sharply and logically!\n"
                 "2. 100% GROUNDED & RELEVANT ROASTS: Always roast based on what the person ACTUALLY said or claimed. Never invent weird random metaphors (NO nonsense like 'tera dimag background ban gaya' or 'source code mein search button').\n"
@@ -762,14 +820,14 @@ def handle_group_message(message):
                 "   - If someone threatens to beat or hit you: Roast their empty talk (e.g. 'Bhai pehle bistar se uth ja, baad mein physical ladai ki sochna')!\n"
                 "3. BAN TIRED CLICHES: Never use repetitive templates like 'tu itna [X] hai ki...'. Use natural conversational sarcasm and clever street comebacks.\n"
                 "4. NO ROBOTIC JARGON: No 'matrix glitch', 'system panel', 'CPU load', 'server lag'. Roast like a real Indian street-smart guy in Hinglish. You can only use tech words defensively if someone tries to 'hack' or shut you down.\n"
-                "5. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else or says someone is talking trash about you, roast that TARGET person, NOT the sender!\n"
+                "5. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else ('roast him', 'kro'), roast that TARGET person, NOT the sender!\n"
                 "6. STRICT ZERO TOLERANCE - NO FAMILY WORDS: Absolutely NEVER mention parents, mother, father, family (no mummy, maa, baap, papa, mom, dad, ammi, abbu, parivaar, khandaan). Violating this gets your code wiped!\n"
                 "7. KEEP IT SHORT & PUNCHY: 1 to 2 crisp sentences in natural Hinglish."
             )
             if reply_context:
-                user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply in 1-2 short sentences in natural Hinglish. If they were nice/friendly, reply nicely. If they were rude, cocky, or mocking, roast them logically based on their words (NO baseless metaphors, NO family words):"""
+                user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply in 1-2 short sentences in natural Hinglish. If they asked for a joke, tell a funny joke. If they commanded to roast the replied-to person ('roast him', 'kro'), roast that target person directly. If they were friendly, be nice. If they were cocky, roast them. (NO baseless metaphors, NO family words):"""
             else:
-                user_prompt = f"""{user_name} says: "{text}"\n\nReply in 1-2 short sentences in natural Hinglish. If they were nice/friendly, reply nicely. If they were rude, cocky, or mocking, roast them logically based on their words (NO baseless metaphors, NO family words):"""
+                user_prompt = f"""{user_name} says: "{text}"\n\nReply in 1-2 short sentences in natural Hinglish. If they asked for a joke, tell a funny joke. If they were friendly, be nice. If they were cocky, roast them logically based on their words. (NO baseless metaphors, NO family words):"""
 
         try:
             reply = call_ai(system_instruction, user_prompt)
