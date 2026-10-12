@@ -37,7 +37,7 @@ OPENROUTER_KEYS = [
 ]
 GEMINI_API_KEY = "AIzaSyCKjp_GVr-ntsYT-bZGSd-Gn_30DeEzrs8"
 
-BOT_NAMES = ["flash", "billu", "flashbot", "flashy", "dex"]
+BOT_NAMES = ["flash", "flashbot", "flashy", "dex"]
 CHANNEL_USERNAME = "rm6785dumppAss"
 CHANNEL_ID = -1003087244808
 
@@ -409,7 +409,7 @@ def should_respond(message, bot_username):
     if f"@{bot_username.lower()}" in t:
         return True
 
-    for nick in ["billu", "flashbot", "flashy", "dex"]:
+    for nick in ["flashbot", "flashy", "dex"]:
         if re.search(rf"\b{re.escape(nick)}\b", t):
             return True
 
@@ -664,7 +664,7 @@ def handle_group_message(message):
                 reply_context = f'In direct reply to {rep_sender}: "{rep_text}"\n'
 
         system_instruction = (
-            "You are Flash (also known as Billu), a witty, funny, brutally sarcastic, and chill friend in a Telegram group chat.\n"
+            "You are Flash, a witty, funny, brutally sarcastic, and chill friend in a Telegram group chat. Your owner, creator, and boss is Billu (Void 〆 Billa). You respect Billu as your boss/bro (with playful teasing), and you roast other group members playfully if they talk nonsense or ask silly questions.\n"
             "Personality & Rules:\n"
             "- Talk like a real, natural human friend with witty sarcasm, sharp humor, and funny banter.\n"
             "- Roast people playfully if they insult you, talk nonsense, or ask silly questions.\n"
