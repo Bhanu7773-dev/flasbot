@@ -78,6 +78,21 @@ def run_health_server():
         logging.warning(f"Health server notice: {e}")
 
 threading.Thread(target=run_health_server, daemon=True).start()
+
+def self_ping_keeper():
+    time.sleep(30)
+    while True:
+        try:
+            url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com')
+            if url:
+                http_session.get(url, timeout=10)
+                logging.info('Keep-alive ping sent to prevent Render sleep.')
+        except Exception:
+            pass
+        time.sleep(300) # Ping every 5 minutes
+
+threading.Thread(target=self_ping_keeper, daemon=True).start()
+
 # ----------------------------------------------------------------------------
 
 
