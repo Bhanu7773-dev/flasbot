@@ -1,4 +1,5 @@
 import sys
+import unicodedata
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -153,7 +154,7 @@ def load_roms_and_kernels():
 ALL_ROMS = load_roms_and_kernels()
 
 KNOWN_BRANDS = [
-    "lineage", "infinity", "crdroid", "evolution", "matrixx",
+    "lineage", "infinity", "crdroid", "evolution", "matrixx", "matrix",
     "axion", "rising", "derpfest", "bliss", "orangefox",
     "twrp", "pbrp", "takoyaki", "miku", "morphe", "sukisu", "kernelsu",
     "bakasu", "resukisu", "elixir", "blaze", "cherish", "voltage",
@@ -163,7 +164,8 @@ KNOWN_BRANDS = [
 FILE_KEYWORDS = [
     "rom", "kernel", "recovery", "twrp", "pbrp", "orangefox", "ofox",
     "shrp", "firmware", "boot img", "boot.img", "bootimage", "boot_img",
-    "vendor", "fastboot", "spft", "c.19", "c.18", "c.17", "flashable"
+    "vendor", "fastboot", "spft", "c.19", "c.18", "c.17", "flashable",
+    "os", "port", "zip", "build", "img"
 ]
 
 
@@ -185,6 +187,9 @@ def normalize_text(t):
         r'\bkrnl\b': 'kernel',
         r'\baxionaosp\b': 'axion',
         r'\brec\b': 'recovery',
+        r'\bmatrix\b': 'matrixx',
+        r'\bmatrixos\b': 'matrixx',
+        r'\bmatrixxos\b': 'matrixx',
     }
     for pat, repl in typos.items():
         t = re.sub(pat, repl, t)
@@ -396,22 +401,55 @@ def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
 
     return results, version_note
 
+def is_sender_master(message):
+    """Detects Master Billu by Telegram username, ID, or fancy unicode display name."""
+    if not message or not getattr(message, 'from_user', None):
+        return False
+    username = (message.from_user.username or "").lower().replace("@", "")
+    if username in ["darkdevil7773b", "darkdevil7773"] or "darkdevil" in username:
+        return True
+    first_name = message.from_user.first_name or ""
+    last_name = message.from_user.last_name or ""
+    full_name = f"{first_name} {last_name}".strip()
+    norm_name = unicodedata.normalize('NFKD', full_name).lower()
+    if any(k in norm_name for k in ["billa", "billu", "darkdevil", "void"]):
+        return True
+    if any(k in full_name for k in ["\U0001D5E9", "〆"]):
+        return True
+    return False
+
 def should_respond(message, bot_username):
-    """Smart trigger that ignores technical verbs like 'flash firmware'."""
+    """Smart trigger: catches bare 'flash', master calls, while ignoring technical verbs."""
+    # Private chat: always respond
+    if getattr(message.chat, 'type', None) == 'private':
+        return True
+
+    # Reply to Flash's own message
+    if message.reply_to_message and message.reply_to_message.from_user:
+        if message.reply_to_message.from_user.is_bot:
+            if (message.reply_to_message.from_user.username or "").lower() == bot_username.lower():
+                return True
+
     text = (message.text or "").strip()
     t = text.lower()
-    
-    if message.reply_to_message and message.reply_to_message.from_user.is_bot:
-        if message.reply_to_message.from_user.username.lower() == bot_username.lower():
-            return True
+    if not t:
+        return False
 
+    # @mention
     if f"@{bot_username.lower()}" in t:
         return True
 
+    # Known bot aliases
     for nick in ["flashbot", "flashy", "dex"]:
         if re.search(rf"\b{re.escape(nick)}\b", t):
             return True
 
+    # Master always gets a response when addressing Flash
+    if is_sender_master(message):
+        if re.search(r"\b(flash|bot|oye|sun|bhai|bata|bol)\b", t) or t == "flash":
+            return True
+
+    # Filter out technical verb usage
     verb_patterns = [
         r"\b(to|can\s+i|should\s+i|how\s+to|clean|dirty|dont)\s+flash\b",
         r"\bflash\s+(firmware|rom|kernel|zip|img|module|partition|via|with|on|in|kar|karo|karna|kare)\b",
@@ -421,15 +459,44 @@ def should_respond(message, bot_username):
         if re.search(vp, t):
             return False
 
-    name_call_patterns = [
-        r'\b(hey|hi|hello|oye|oyy|yo|arre|bhai|sun)\s+flash\b',
-        r'\bflash\s+(bhai|bro|yaar|tell|bata|btao|de|give|send|what|who|kya)\b',
-        r'^\s*flash[\s,?!:]'
-    ]
-    for np in name_call_patterns:
-        if re.search(np, t):
-            return True
+    # Any standalone mention of "flash" (bare "flash", "flash?", "kaisa hai flash", etc.)
+    if re.search(r"\bflash\b", t):
+        return True
 
+    return False
+
+
+# ============ HARD FAMILY WORD FILTER ============
+FAMILY_BANNED_PATTERNS = [
+    r'\bmummy\b', r'\bmomm?y\b', r'\bmom\b', r'\bmaa\b', r'\bmata\b', r'\bmother\b',
+    r'\bammi\b', r'\bamma\b', r'\bbaap\b', r'\bpapa\b', r'\bdad\b', r'\bdaddy\b',
+    r'\bfather\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b', r'\bwalid\b', r'\bwalida\b',
+    r'\bparivaar\b', r'\bkhandaan\b', r'\bfamily\b', r'\bparents\b',
+    r'\bjanani\b', r'\bjanak\b', r'\bgharwale\b', r'\bgharwalon\b',
+    r'\b(teri|tere|apni|apne)\s+(maa|baap|mummy|papa|ammi|abbu|mom|dad)\b',
+]
+
+SAFE_CLEAN_ROASTS = [
+    "Bhai tu rehne de, tera joke sunke pura chat awkward ho gaya lol",
+    "Bhai itna confidence laata kahan se hai, thoda idhar bhi bhej de lol",
+    "Acha bhai, pehle apni baat mein thoda sense daal le phir gyaan dena lol",
+    "Bhai tu roast karne nikla tha ya apni hi izzat ka tamasha banane lol",
+    "Bhai tu joke maar raha tha ya sympathy maang raha tha? Lol",
+    "Bhai chup ho ja, teri baatein sunke calculator bhi divide by zero ho gaya lol",
+    "Bhai tu bolta bohot hai, par baat mein dum bilkul zero rehta hai lol",
+    "Bhai tu itna slow roast karta hai ki popcorn bhi jal ke thanda ho jaye lol",
+    "Bhai tera dimaag flight mode pe chala gaya hai kya? Lol",
+    "Bhai group mein rehke itna cringe mat faila, log mute kar denge lol",
+]
+
+def contains_family_words(text):
+    """Hard Python filter: returns True if AI reply contains any family/parent words."""
+    if not text:
+        return False
+    t = text.lower()
+    for pat in FAMILY_BANNED_PATTERNS:
+        if re.search(pat, t):
+            return True
     return False
 
 def try_groq(system_prompt, user_prompt):
@@ -594,19 +661,6 @@ def handle_channel_post(message):
         except Exception as e:
             logging.error(f"Error updating database: {e}")
 
-def is_sender_master(message):
-    """Detects Master Billu by Telegram username, ID, or fancy unicode display name."""
-    username = (message.from_user.username or "").lower().replace("@", "")
-    if username in ["darkdevil7773b", "darkdevil7773"]:
-        return True
-    first_name = (message.from_user.first_name or "")
-    fn_lower = first_name.lower()
-    if any(k in fn_lower for k in ["billa", "billu", "darkdevil"]):
-        return True
-    if "void" in fn_lower or "\U0001D5E9" in first_name or "〆" in first_name:
-        return True
-    return False
-
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
     chat_id = message.chat.id
@@ -638,7 +692,8 @@ def handle_group_message(message):
             "give", "send", "link", "rom", "kernel", "file", "apk", "twrp",
             "recovery", "lineage", "ofox", "orangefox", "pbrp", "c.19", "spft",
             "download", "latest", "vanilla", "microg", "boot", "img", "de", "bhi",
-            "rui2", "rui3", "salaa", "wali", "nikal", "nikalke", "axion"
+            "rui2", "rui3", "salaa", "wali", "nikal", "nikalke", "axion",
+            "matrix", "matrixx", "os", "port", "zip", "build"
         ])
 
         # GUARANTEED PRECISE FILE DELIVERY (ONLY WHEN RELEVANT FILE REQUESTED)
@@ -695,24 +750,37 @@ def handle_group_message(message):
                 user_prompt = f"""Your Supreme Master Billu (@darkdevil7773b) commands: "{text}"\n\nReply with humble obedience and fear of getting deleted (1-2 short sentences):"""
         else:
             system_instruction = (
-                "You are Flash, a street-smart, funny, and savage friend in a Telegram group chat.\n"
+                "You are Flash, a sharp-witted, hilarious, and savage friend in a Telegram group chat.\n"
                 "Your creator and boss is Master Billu / Void (@darkdevil7773b).\n"
-                "Human Roasting Rules (NO NERDY TECH JARGON):\n"
-                "1. ROAST LIKE A REAL HUMAN: Use everyday street-smart human insults, funny relatable analogies, and natural Hinglish/English banter (e.g. clown behavior, bad jokes, zero friends, overconfidence, low IQ).\n"
-                "2. NO ROBOTIC WORDS: NEVER call people 'glitch in the matrix', 'system panel', 'slow CPU', 'RAM', 'server error', etc. Those sound nerdy and cringe! Roast like a real person.\n"
-                "3. TECH DEFENSE SHIELD: ONLY when someone tries to roast YOU for being an AI bot ('you are just a bot', 'bot shut up'), you can playfully use your AI status to flex/protect yourself (e.g. 'Bhai main toh 24/7 bina thake bolta rahunga, tu pehle apna net pack check kar le lol').\n"
-                "4. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else or says someone is talking trash about you, ROAST THAT TARGET PERSON, NOT the sender!\n"
-                "5. KEEP IT SHORT: Strict limit of 1 single punchy sentence (maximum 2 short sentences).\n"
-                "6. NO FAMILY INSULTS: Never insult or mention anyone's parents, mother, father, or family (no maa/baap insults).\n"
-                "7. NO UNPROMPTED TECH: Do NOT mention custom ROMs, kernels, or firmware unless specifically asked."
+                "RULES FOR GROUNDED, LOGICAL & INTERESTING BANTER:\n"
+                "1. 100% RELEVANT TO WHAT WAS SAID: Every roast must directly make fun of what the person actually said, asked for, or claimed! NEVER invent baseless, nonsensical metaphors (e.g. NEVER say weird things like 'tera dimag background ban gaya' or 'source code mein share button dhundhega'). Base your comeback on real-world logic!\n"
+                "   - If they ask for wallpaper: Mock them for treating a bot like a photo studio or tell them to use Google!\n"
+                "   - If they ask for an iOS port: Mock them for dreaming of iPhone on an Android budget!\n"
+                "   - If they ask for homework/favors: Mock their pure laziness!\n"
+                "   - If they act cocky: Call out their specific bluff or foolishness directly!\n"
+                "2. BAN TIRED CLICHES: NEVER use repetitive templates like 'tera dimag itna [X] hai ki...' or 'tu itna [X] hai ki...'. Use natural conversational sarcasm, clever rhetorical questions, and punchy street comebacks.\n"
+                "3. NO ROBOTIC JARGON: No 'matrix glitch', 'system panel', 'CPU', 'server lag'. Roast like a real Indian street-smart guy in Hinglish.\n"
+                "4. TARGET THE RIGHT PERSON: If the sender asks you to roast someone else or says someone is talking trash about you, roast that target person, NOT the sender!\n"
+                "5. KEEP IT SHORT & PUNCHY: 1 to 2 crisp, funny sentences in natural Hinglish.\n"
+                "6. STRICT ZERO TOLERANCE - NO FAMILY WORDS: Absolutely NEVER mention parents, mother, father, family (no mummy, maa, baap, papa, mom, dad, ammi, abbu, parivaar). Violating this gets your code wiped!\n"
+                "7. NO UNPROMPTED TECH: Do not mention ROMs or kernels in casual talk unless asked."
             )
             if reply_context:
-                user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
+                user_prompt = f"""{reply_context}{user_name} says: "{text}"\n\nReply with a sharp, hilarious comeback directly related to what they just said (1-2 short sentences in natural Hinglish, NO baseless metaphors, NO family words):"""
             else:
-                user_prompt = f"""{user_name} says: "{text}"\n\nReply in 1 short, crisp sentence (roast the target person if mentioned):"""
+                user_prompt = f"""{user_name} says: "{text}"\n\nReply with a sharp, hilarious comeback directly related to what they just said (1-2 short sentences in natural Hinglish, NO baseless metaphors, NO family words):"""
 
         try:
             reply = call_ai(system_instruction, user_prompt)
+
+            # HARD FAMILY WORD GUARD: Absolute zero tolerance
+            if contains_family_words(reply):
+                logging.warning(f"AI generated prohibited family words: '{reply}'. Regenerating...")
+                retry_prompt = f"{user_prompt}\n\n[CRITICAL: Previous response had banned family words. Generate a completely clean, witty roast about the person's own behavior only (1 short sentence):]"
+                reply = call_ai(system_instruction, retry_prompt)
+                if contains_family_words(reply):
+                    logging.warning("AI still generated family words. Using safe fallback.")
+                    reply = random.choice(SAFE_CLEAN_ROASTS)
             bot.reply_to(message, reply)
             save_chat_message(chat_id, "Flash", reply)
         except Exception as e:
