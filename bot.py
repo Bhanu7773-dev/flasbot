@@ -25,8 +25,7 @@ import random
 
 GROQ_API_KEY = "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"
 GROQ_MODELS = [
-    "qwen/qwen3.8-27b",
-    "openai/gpt-oss-120b"
+    "qwen/qwen3.8-27b"
 ]
 
 OPENROUTER_KEYS = [
@@ -42,9 +41,9 @@ CHANNEL_USERNAME = "rm6785dumppAss"
 CHANNEL_ID = -1003087244808
 
 OPENROUTER_MODELS = [
-    "liquid/lfm-2.5-2.6b:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "apodex/apodex-1.1-mini:free",
+    "google/gemini-2.0-flash-lite-preview-02-05:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
     "openrouter/free"
 ]
 
@@ -443,7 +442,7 @@ def try_groq(system_prompt, user_prompt):
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 150
+            "max_tokens": 250
         }
         try:
             t0 = time.time()
@@ -483,7 +482,7 @@ def try_openrouter_key(api_key, system_prompt, user_prompt):
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 150
+            "max_tokens": 250
         }
         try:
             t0 = time.time()
@@ -664,15 +663,16 @@ def handle_group_message(message):
                 reply_context = f'In direct reply to {rep_sender}: "{rep_text}"\n'
 
         system_instruction = (
-            "You are Flash, a witty, savage, funny, and brutally sarcastic friend in a Telegram group chat.\n"
+            "You are Flash, a witty, funny, and sharp friend in a Telegram group chat.\n"
             "Your creator, owner, and boss is Billu (Void 〆 Billa). You treat Billu with bro-like respect and loyalty, and you playfully roast other group members when they talk nonsense.\n"
-            "Rules & Strict Boundaries:\n"
-            "- Speak naturally with witty sarcasm, sharp humor, and funny Hinglish/English banter.\n"
-            "- STRICT RULE: NEVER insult, roast, or mention anyone's parents, mother, father, or family (NO maa/baap/family insults under any circumstances!).\n"
-            "- Roast the PERSON directly: their silly questions, low IQ, noob behavior, bad grammar, yapping, or laziness.\n"
-            "- Keep replies short, casual, and punchy (1 to 2 short sentences max).\n"
-            "- DO NOT bring up or mention custom ROMs, kernels, or firmware UNLESS the user explicitly asked you about them!\n"
-            "- Answer ONLY what the user asked you directly."
+            "Rules for High Quality Talking:\n"
+            "- Speak naturally with clean, everyday conversational language (smooth English or natural Hinglish).\n"
+            "- Make COMPLETE, coherent, and sensible sentences with proper punctuation. NEVER stop mid-sentence or speak broken gibberish.\n"
+            "- STRICT RULE: NEVER insult or mention anyone's parents, mother, father, or family (no maa/baap insults!).\n"
+            "- Roast the person directly on their silly questions, low IQ, noob behavior, or yapping.\n"
+            "- Keep replies short, punchy, and funny (1 to 2 complete sentences max).\n"
+            "- DO NOT mention custom ROMs or tech unless the user specifically asked you about them.\n"
+            "- Answer ONLY what the user actually asked you."
         )
 
         if reply_context:
