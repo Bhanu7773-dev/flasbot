@@ -3,3 +3,7 @@ __pycache__/
 channel_export.json
 user_raw.txt
 flash_memory.db
+.env
+*.env
+!.env.example
+secrets.*

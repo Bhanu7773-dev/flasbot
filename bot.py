@@ -22,24 +22,43 @@ apihelper.READ_TIMEOUT = 25
 apihelper.CONNECT_TIMEOUT = 15
 apihelper.RETRY_ON_ERROR = True
 
-# ----------------- CONFIGURATION -----------------
-TELEGRAM_BOT_TOKEN = "8613504216:AAEn_PHleVmn7BAnBPKhz8qpwI-5t-h2LxQ"
+# ----------------- CONFIGURATION (LOADED SECURELY VIA .ENV / ENVIRONMENT) -----------------
+def load_dotenv_file(filepath=None):
+    if filepath is None:
+        filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception as e:
+            logging.warning(f"Notice loading .env: {e}")
+
+load_dotenv_file()
+
 import random
 
-GROQ_API_KEY = "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"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+
+raw_or_keys = os.environ.get("OPENROUTER_KEYS", "").strip()
+if raw_or_keys:
+    OPENROUTER_KEYS = [k.strip() for k in raw_or_keys.split(",") if k.strip()]
+else:
+    OPENROUTER_KEYS = []
+
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
     "qwen/qwen3.8-27b",
     "openai/gpt-oss-20b"
 ]
-
-OPENROUTER_KEYS = [
-    "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",
-    "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",
-    "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",
-    "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",
-]
-GEMINI_API_KEY = "AIzaSyCKjp_GVr-ntsYT-bZGSd-Gn_30DeEzrs8"
 
 BOT_NAMES = ["flash"]
 CHANNEL_USERNAME = "rm6785dumppAss"
