@@ -1408,6 +1408,36 @@ def handle_channel_post(message):
         except Exception as e:
             logging.error(f"Error updating database: {e}")
 
+@bot.message_handler(commands=['start'])
+def handle_start_command(message):
+    user = message.from_user
+    user_id = user.id
+    raw_name = user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+
+    player = get_or_create_roulette_player(user_id, safe_name)
+
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+
+    markup = InlineKeyboardMarkup()
+    btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
+    markup.add(btn_webapp)
+
+    welcome_text = (
+        f"⚡ *Hey {safe_name}! Welcome to Flash Bot!* ⚡\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
+        f"🎮 *Mini-Games:*\n"
+        f"• Tap below to launch *Russian Roulette* (Interactive 3D cylinder & audio!)\n\n"
+        f"💡 *Commands:*\n"
+        f"• `/balance` — Check points & server rank\n"
+        f"• `/daily` — Claim +100 free points daily\n"
+        f"• `/stats` — View top leaderboard\n"
+        f"• `/ping` — Check latency & uptime"
+    )
+    bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:roulette|russianroulette)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_roulette_command(message):
     chat_id = message.chat.id
@@ -1430,13 +1460,21 @@ def handle_roulette_command(message):
         )
         return
 
-    # Render external WebApp URL
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-    webapp_url = f"{render_url}/roulette"
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+    bot_username = "flash_billu_bot"
 
     markup = InlineKeyboardMarkup()
-    btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
-    markup.add(btn_webapp)
+    if message.chat.type == "private":
+        # Native WebApp button is 100% supported in PM
+        btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
+        markup.add(btn_webapp)
+    else:
+        # In Groups: Telegram API forbids web_app inline buttons, so use direct URL button + PM launcher button
+        btn_direct = InlineKeyboardButton("🎰 Play Roulette Mini-App 🔫", url=webapp_url)
+        btn_pm = InlineKeyboardButton("💬 Launch in PM (Native Window) 🚀", url=f"https://t.me/{bot_username}?start=roulette")
+        markup.row(btn_direct)
+        markup.row(btn_pm)
 
     intro_text = (
         f"🎰 *FLASH RUSSIAN ROULETTE (MINI-APP)* 🔫\n"
@@ -1448,7 +1486,7 @@ def handle_roulette_command(message):
         f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
         f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
         f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
-        f"👇 *Neeche button tap karke Telegram Mini-App launch karo:*"
+        f"👇 *Neeche button tap karke Telegram Mini-App open karo:*"
     )
     bot.reply_to(message, intro_text, reply_markup=markup, parse_mode="Markdown")
 

@@ -577,9 +577,13 @@
     }
 
     // Game State
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramId = urlParams.get('user_id');
+    const paramName = urlParams.get('user_name');
+
     let user = {
-      id: tg?.initDataUnsafe?.user?.id || 6056618592,
-      name: tg?.initDataUnsafe?.user?.first_name || "Player"
+      id: tg?.initDataUnsafe?.user?.id || (paramId ? parseInt(paramId) : 6056618592),
+      name: tg?.initDataUnsafe?.user?.first_name || (paramName ? decodeURIComponent(paramName) : "Player")
     };
 
     let round = 1;
