@@ -1424,6 +1424,22 @@ def handle_start_command(message):
     btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
     markup.add(btn_webapp)
 
+    if message.text and "roulette" in message.text:
+        roulette_text = (
+            f"🎰 *FLASH RUSSIAN ROULETTE* 🔫\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 *Player:* {safe_name}\n"
+            f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
+            f"🎯 *Mini-App (In-App Frame)*\n"
+            f"• 🔄 Interactive 6-Chamber Rotating Cylinder\n"
+            f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
+            f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
+            f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
+            f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
+        )
+        bot.reply_to(message, roulette_text, reply_markup=markup, parse_mode="Markdown")
+        return
+
     welcome_text = (
         f"⚡ *Hey {safe_name}! Welcome to Flash Bot!* ⚡\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -1460,35 +1476,71 @@ def handle_roulette_command(message):
         )
         return
 
+    # 1. Native Telegram Game (Corsair style!):
+    # If registered in @BotFather via /newgame (short name: roulette), Telegram sends a native Game card.
+    # When players tap Play, Telegram opens it strictly inside Telegram with ZERO browser redirection!
+    try:
+        bot.send_game(chat_id, "roulette")
+        logging.info(f"Successfully sent native Telegram Game 'roulette' to chat {chat_id}")
+        return
+    except Exception as e:
+        logging.warning(f"send_game 'roulette' not registered yet or failed: {e}")
+
+    # 2. Fallback for group / PM before BotFather /newgame registration:
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
     bot_username = "flash_billu_bot"
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
-        # Native WebApp button is 100% supported in PM
+        # In PM: Native WebApp button opens 100% inside Telegram
         btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        # In Groups: Telegram API forbids web_app inline buttons, so use direct URL button + PM launcher button
-        btn_direct = InlineKeyboardButton("🎰 Play Roulette Mini-App 🔫", url=webapp_url)
-        btn_pm = InlineKeyboardButton("💬 Launch in PM (Native Window) 🚀", url=f"https://t.me/{bot_username}?start=roulette")
-        markup.row(btn_direct)
+        # In Groups: Use Telegram internal Mini-App link + PM in-app launcher (No external browser!)
+        btn_miniapp = InlineKeyboardButton("🎰 Play In Telegram (Mini-App) 🔫", url=f"https://t.me/{bot_username}/roulette")
+        btn_pm = InlineKeyboardButton("💬 Play in PM (In-App Window) 🚀", url=f"https://t.me/{bot_username}?start=roulette")
+        markup.row(btn_miniapp)
         markup.row(btn_pm)
 
     intro_text = (
-        f"🎰 *FLASH RUSSIAN ROULETTE (MINI-APP)* 🔫\n"
+        f"🎰 *FLASH RUSSIAN ROULETTE* 🔫\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
-        f"🎯 *Mini-App Highlights:*\n"
-        f"• 🔄 Interactive Rotating Cylinder Animation\n"
+        f"🎯 *Game Highlights:*\n"
+        f"• 🔄 Interactive 6-Chamber Revolver Cylinder\n"
         f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
         f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
         f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
-        f"👇 *Neeche button tap karke Telegram Mini-App open karo:*"
+        f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
     )
     bot.reply_to(message, intro_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.callback_query_handler(func=lambda call: getattr(call, 'game_short_name', None) is not None)
+def handle_game_callback(call):
+    """
+    Native Telegram Game callback handler (Corsair style).
+    Responds to the Play Game button with the webview URL.
+    Telegram client opens this directly in the native Game viewport (no browser redirect).
+    """
+    try:
+        user_id = call.from_user.id
+        raw_name = call.from_user.first_name or "Player"
+        safe_name = clean_player_name(raw_name)
+        get_or_create_roulette_player(user_id, safe_name)
+
+        render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+        game_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+
+        bot.answer_callback_query(call.id, url=game_url)
+        logging.info(f"Opened native in-game view for {safe_name} ({user_id}) on callback {call.id}")
+    except Exception as e:
+        logging.error(f"Error answering game callback query: {e}")
+        try:
+            bot.answer_callback_query(call.id, "Game load nahi ho paya, please try again.")
+        except Exception:
+            pass
 
 @bot.callback_query_handler(func=lambda call: call.data and call.data.startswith('rr_'))
 def handle_roulette_callback(call):
