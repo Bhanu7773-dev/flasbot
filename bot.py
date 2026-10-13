@@ -60,18 +60,62 @@ ROMS_DATABASE_FILE = "roms_database.json"
 BOT_START_TIME = time.time()
 
 # ----------------- ROM COMPARISON KNOWLEDGE BASE -----------------
-ROM_ALIASES = {
-    "evo": "evolution",
-    "evox": "evolution",
-    "evolutionx": "evolution",
-    "risingos": "rising",
-    "superioros": "superior",
-    "voltageos": "voltage",
-    "los": "lineage",
-    "pixel": "pixelos",
-    "derp": "derpfest",
-    "crd": "crdroid"
-}
+ROM_PATTERNS = [
+    ("axion", r"\b(axion|axionos|axn)\b"),
+    ("pixelos", r"\b(pixel|pixelos|pos|pixelrom)\b"),
+    ("crdroid", r"\b(crdroid|cr\s*droid|crd|crdroidos)\b"),
+    ("lineage", r"\b(lineage|lineageos|lienage|lienageos|los)\b"),
+    ("derpfest", r"\b(derp|derpfest|derpfestos)\b"),
+    ("evolution", r"\b(evo|evox|evolution|evolutionx|evolutionos)\b"),
+    ("rising", r"\b(rising|risingos)\b"),
+    ("superior", r"\b(superior|superioros)\b"),
+    ("voltage", r"\b(voltage|voltageos)\b"),
+    ("bliss", r"\b(bliss|blissroms|blissos)\b"),
+    ("cherish", r"\b(cherish|cherishos)\b"),
+    ("matrixx", r"\b(matrixx|matrix)\b")
+]
+
+def extract_roms_from_query(raw_text):
+    """
+    Super-smart, typo-tolerant ROM extractor:
+    - Handles 'axionos', 'lineageos', 'lienageos'
+    - Handles spaces: 'axion os', 'lineage os', 'os axion'
+    - Handles case: 'AxionOS', 'Lineage OS'
+    - Strips 'vs', 'and', 'with', '&'
+    """
+    clean = re.sub(r'^[/\.!](?:compare)(?:@\w+)?\s*', '', raw_text.strip(), flags=re.IGNORECASE).lower()
+    clean = re.sub(r'\b(vs|and|aur|with|v/s|&)\b', ' ', clean)
+    clean = re.sub(r'\bos\b', ' ', clean)
+    clean = re.sub(r'\s+', ' ', clean).strip()
+
+    found = []
+    # 1. Direct Regex Match
+    for rom_key, pat in ROM_PATTERNS:
+        if re.search(pat, clean):
+            if rom_key not in found:
+                found.append(rom_key)
+
+    # 2. Fuzzy / Typo / Attached 'os' cleanup
+    if len(found) < 2:
+        tokens = clean.split()
+        for tok in tokens:
+            t = re.sub(r'[^a-z0-9]', '', tok)
+            if t.endswith('os') and len(t) > 4:
+                t = t[:-2]
+            if t.startswith('os') and len(t) > 4:
+                t = t[2:]
+
+            for rom_key, _ in ROM_PATTERNS:
+                if rom_key not in found:
+                    if rom_key.startswith(t) and len(t) >= 3:
+                        found.append(rom_key)
+                    elif t.startswith(rom_key[:4]) and len(t) >= 4:
+                        found.append(rom_key)
+                    elif 'lienag' in t or 'lineag' in t:
+                        if 'lineage' not in found:
+                            found.append('lineage')
+
+    return found[:2]
 
 ROM_PROFILES = {
     "axion": {
@@ -951,23 +995,21 @@ def handle_channel_post(message):
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:compare)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_compare_command(message):
     """
-    ZERO-TOKEN ROM COMPARISON ENGINE:
-    Compare any 2 Custom ROMs (e.g. /compare axion pixelos)
+    ZERO-TOKEN SMART ROM COMPARISON ENGINE:
+    Handles capital/small, attached 'os' (axionos, lineageos), typos (lienageos), spaces (axion os vs lineage os).
     """
     text = (message.text or "").strip()
-    # Strip command prefix
-    args_text = re.sub(r'^[/\.!](?:compare)(?:@\w+)?\s*', '', text, flags=re.IGNORECASE).strip()
-    # Split by whitespace or 'vs'
-    parts = [p.lower().strip() for p in re.split(r'\s+(?:vs\s+)?|\s+', args_text) if p.strip()]
+    detected_roms = extract_roms_from_query(text)
 
-    # If no arguments provided
-    if not parts:
+    # Case 1: No recognized ROM found
+    if not detected_roms:
         available = ", ".join([v["name"] for v in ROM_PROFILES.values()])
         bot.reply_to(
             message,
             "⚖️ *Kaunsi 2 ROMs compare karni hain bhai?*\n\n"
-            "*Usage:*\n"
+            "*Usage Examples:*\n"
             "• `/compare axion pixelos`\n"
+            "• `/compare axionos lineageos`\n"
             "• `/compare crdroid lineage`\n"
             "• `/compare derpfest evox`\n"
             "• `/compare risingos superior`\n\n"
@@ -976,41 +1018,24 @@ def handle_compare_command(message):
         )
         return
 
-    # Normalize aliases
-    rom1_key = ROM_ALIASES.get(parts[0], parts[0])
-    
-    # If single ROM provided: show complete profile
-    if len(parts) == 1:
-        if rom1_key in ROM_PROFILES:
-            r = ROM_PROFILES[rom1_key]
-            card = (
-                f"📊 *{r['name']} Profile* ({r['type']})\n\n"
-                f"• *Customization:* {r['customization']}\n"
-                f"• *Performance:* {r['perf']}\n"
-                f"• *Battery Life:* {r['battery']}\n"
-                f"• *Highlights:* {r['features']}\n\n"
-                f"🎯 *Verdict:* {r['verdict']}\n\n"
-                f"💡 _Tip: Doosri ROM ke sath compare karne ke liye likho: `/compare {rom1_key} pixelos`_"
-            )
-            bot.reply_to(message, card, parse_mode="Markdown")
-        else:
-            bot.reply_to(message, f"❌ '{parts[0]}' ka profile available nahi hai. Try: `axion`, `pixelos`, `crdroid`, `lineage`, `derpfest`, `evolution`, etc.", parse_mode="Markdown")
-        return
-
-    rom2_key = ROM_ALIASES.get(parts[1], parts[1])
-
-    if rom1_key not in ROM_PROFILES or rom2_key not in ROM_PROFILES:
-        missing = parts[0] if rom1_key not in ROM_PROFILES else parts[1]
-        available = ", ".join([v["name"] for v in ROM_PROFILES.values()])
-        bot.reply_to(
-            message,
-            f"❌ *'{missing}' ka comparison data nahi mila.*\n\n"
-            f"Available ROMs: {available}\n"
-            "Example: `/compare axion pixelos`",
-            parse_mode="Markdown"
+    # Case 2: Only 1 ROM detected -> Show deep profile
+    if len(detected_roms) == 1:
+        rom1_key = detected_roms[0]
+        r = ROM_PROFILES[rom1_key]
+        card = (
+            f"📊 *{r['name']} Profile* ({r['type']})\n\n"
+            f"• *Customization:* {r['customization']}\n"
+            f"• *Performance:* {r['perf']}\n"
+            f"• *Battery Life:* {r['battery']}\n"
+            f"• *Highlights:* {r['features']}\n\n"
+            f"🎯 *Verdict:* {r['verdict']}\n\n"
+            f"💡 _Doosri ROM ke sath compare karne ke liye likho: `/compare {rom1_key} pixelos`_"
         )
+        bot.reply_to(message, card, parse_mode="Markdown")
         return
 
+    # Case 3: 2 ROMs detected -> Side-by-side comparison
+    rom1_key, rom2_key = detected_roms[0], detected_roms[1]
     r1 = ROM_PROFILES[rom1_key]
     r2 = ROM_PROFILES[rom2_key]
 
