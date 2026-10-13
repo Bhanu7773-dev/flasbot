@@ -339,6 +339,21 @@ def clean_player_name(name):
         name = name.replace(ch, '')
     return name.strip() or "Player"
 
+def render_cylinder(active_slot, is_shot=None):
+    """Generates visual 6-chamber revolver graphic."""
+    slots = []
+    for i in range(1, 7):
+        if i == active_slot:
+            if is_shot is True:
+                slots.append("💥")
+            elif is_shot is False:
+                slots.append("💨")
+            else:
+                slots.append("🔘")
+        else:
+            slots.append("⚪")
+    return "[ " + " | ".join(slots) + " ]"
+
 def update_roulette_msg(chat_id, message_id, text, reply_markup=None):
     """
     STRICT ANTI-FLOOD HELPER:
@@ -399,6 +414,7 @@ def get_roulette_leaderboard(caller_id=None):
             lines.append(f"{m} *{clean_name}*{star} — `{r[1]} pts` (Streak: {r[2]} 🔥)")
 
         lines.append("\n🎲 _Play: Type `/roulette` (Push your luck! Cash out or risk it)_")
+        lines.append("💳 _Check wallet: `/balance`_")
         lines.append("🎁 _Claim daily 100 pts: `/daily`_")
         return "\n".join(lines)
     except Exception as e:
@@ -423,7 +439,9 @@ def expire_roulette_session(session_id, chat_id, message_id, user_name):
         roast = random.choice(TIMEOUT_ROASTS)
         safe_name = clean_player_name(user_name)
         timeout_text = (
-            f"⏱️ *30 Seconds Expired!* (Game Cancelled)\n\n"
+            f"╔══════════════════════════╗\n"
+            f"║ ⏱️ 30 SECONDS EXPIRED! ⏱️ ║\n"
+            f"╚══════════════════════════╝\n\n"
             f"_{roast}_\n\n"
             f"🐔 *{safe_name}* darr ke bhaag gaya! Iss game ke na koi points mile na kate."
         )
@@ -1138,7 +1156,7 @@ def handle_roulette_command(message):
             message,
             f"🚫 *Khelna Band, Gareeb!* (Balance: `{player['points']} pts`)\n\n"
             f"_{quote}_\n\n"
-            f"💡 _Tip: `/daily` likho aur 100 free points claim karo ya group walon se bheek maango!_",
+            f"💡 _Tip: `/daily` likho aur 100 free points claim karo ya `/balance` check karo!_",
             parse_mode="Markdown"
         )
         return
@@ -1153,10 +1171,18 @@ def handle_roulette_command(message):
                 pass
             ACTIVE_ROULETTE_GAMES.pop(s_id, None)
 
-    # Exactly ONE single message created for this entire game
+    # FRAME 1: Spinning Cylinder Animation
     try:
-        msg = bot.reply_to(message, "🌀 *Spinning cylinder & cocking the hammer...* 🔄", parse_mode="Markdown")
-        time.sleep(1.0)
+        f1_text = (
+            "╔══════════════════════════╗\n"
+            "║   🎰 RUSSIAN ROULETTE    ║\n"
+            "╚══════════════════════════╝\n\n"
+            "⚙️ *SPINNING CYLINDER...*\n"
+            "`[ 🔄 | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ ]`\n"
+            "_whirrrrr... clack-clack-clack..._"
+        )
+        msg = bot.reply_to(message, f1_text, parse_mode="Markdown")
+        time.sleep(0.9)
     except Exception:
         msg = message
 
@@ -1164,6 +1190,20 @@ def handle_roulette_command(message):
     bullet = random.randint(1, 6)
     chamber = random.randint(1, 6)
 
+    # FRAME 2: Hammer Cocked & Aiming at Temple
+    f2_text = (
+        "╔══════════════════════════╗\n"
+        "║   🎰 RUSSIAN ROULETTE    ║\n"
+        "╚══════════════════════════╝\n\n"
+        f"🎯 *HAMMER COCKED ON CHAMBER {chamber}/6...*\n"
+        f"`{render_cylinder(chamber, None)}`\n"
+        f"🔫 _Bandook {safe_name} ki kanpati pe rakh di..._\n"
+        f"*Ungli trigger pe dab rahi hai...* 😰"
+    )
+    update_roulette_msg(chat_id, msg.message_id, f2_text)
+    time.sleep(1.0)
+
+    # FRAME 3: The Reveal
     if chamber == bullet:
         # Shot on Round 1: lose 150 from total balance, clear game
         new_pts = max(0, player["points"] - 150)
@@ -1174,8 +1214,12 @@ def handle_roulette_command(message):
             logging.error(f"DB update error: {e}")
 
         res_text = (
-            f"💥 *BANG!!* Bullet fired from Chamber `{chamber}/6`!\n\n"
-            f"💀 *Khel Khatam! {safe_name} Got Shot on Round 1!*\n"
+            "╔══════════════════════════╗\n"
+            "║   💥 B O O O O M ! ! 💥  ║\n"
+            "╚══════════════════════════╝\n\n"
+            f"🔴 *LIVE BULLET FIRED FROM CHAMBER {chamber}/6!*\n"
+            f"`{render_cylinder(chamber, True)}`\n\n"
+            f"💀 *KHEL KHATAM! {safe_name} Got Shot on Round 1!*\n"
             f"💸 Total Balance se `-150 Points` kat gaye!\n"
             f"💰 Naya Balance: `{new_pts} pts` ❌"
         )
@@ -1198,8 +1242,12 @@ def handle_roulette_command(message):
     }
 
     res_text = (
-        f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
-        f"🎉 *{safe_name} Survived Round 1!*\n"
+        "╔══════════════════════════╗\n"
+        "║    💨 *C L I C K...*     ║\n"
+        "╚══════════════════════════╝\n\n"
+        f"💨 *CHAMBER {chamber}/6 WAS EMPTY!*\n"
+        f"`{render_cylinder(chamber, False)}`\n\n"
+        f"🎉 *{safe_name} SURVIVED ROUND 1!*\n"
         f"💰 Current Pot: `+{current_pot} Points`\n\n"
         f"Ab batao: Risk leke agle round me `+{next_pot} pts` ke liye fire karega ya `+{current_pot} pts` leke bhaagega?\n"
         f"⏱️ _(30 seconds to decide!)_"
@@ -1255,7 +1303,9 @@ def handle_roulette_callback(call):
             logging.error(f"DB update error: {e}")
 
         cashout_text = (
-            f"💰 *CASHED OUT & SURVIVED!*\n\n"
+            "╔══════════════════════════════╗\n"
+            "║   💰 CASHED OUT & SAFE! 💰   ║\n"
+            "╚══════════════════════════════╝\n\n"
             f"🎉 *{safe_name}* ne samajhdari dikhai aur `+{current_pot} Points` jeet ke nikal gaya!\n"
             f"💰 Naya Balance: `{new_pts} pts` | Current Streak: `{new_streak}` 🔥"
         )
@@ -1267,13 +1317,37 @@ def handle_roulette_callback(call):
         next_round = current_round + 1
         bot.answer_callback_query(call.id, f"Spinning for Round {next_round}!")
 
-        # In-place animation on the SAME message
-        update_roulette_msg(chat_id, message_id, f"🌀 *Spinning cylinder for Round {next_round}...* 🔄", reply_markup=None)
-        time.sleep(1.0)
+        # Dynamic spinning visual on the same message
+        spin_icons = ["⚪", "⚪", "⚪", "⚪", "⚪", "⚪"]
+        spin_icons[next_round % 6] = "🔄"
+        spin_vis = "[ " + " | ".join(spin_icons) + " ]"
+
+        f1_text = (
+            f"╔══════════════════════════╗\n"
+            f"║   🎲 ROUND {next_round} — RISK IT!  ║\n"
+            f"╚══════════════════════════╝\n\n"
+            f"🔄 *SPINNING CYLINDER FOR ROUND {next_round}...*\n"
+            f"`{spin_vis}`\n"
+            f"_Dhadkanein badh rahi hain... suspense badhta hua!_"
+        )
+        update_roulette_msg(chat_id, message_id, f1_text, reply_markup=None)
+        time.sleep(0.9)
 
         # Independent random bullet and chamber for this round
         bullet = random.randint(1, 6)
         chamber = random.randint(1, 6)
+
+        # Frame 2: Aiming at temple
+        f2_text = (
+            f"╔══════════════════════════╗\n"
+            f"║   🎲 ROUND {next_round} — SUSPENSE   ║\n"
+            f"╚══════════════════════════╝\n\n"
+            f"🎯 *TRIGGER PULLED ON CHAMBER {chamber}/6...*\n"
+            f"`{render_cylinder(chamber, None)}`\n"
+            f"😰 _Hawa band... Kismat ya Maut?_"
+        )
+        update_roulette_msg(chat_id, message_id, f2_text, reply_markup=None)
+        time.sleep(1.0)
 
         if chamber == bullet:
             # SHOT FIRED! Lost session pot + extra 150 points deducted from total balance. Clear game.
@@ -1286,7 +1360,11 @@ def handle_roulette_callback(call):
                 logging.error(f"DB update error: {e}")
 
             death_text = (
-                f"💥 *BANG!!* Bullet fired from Chamber `{chamber}/6`!\n\n"
+                "╔══════════════════════════╗\n"
+                "║   💥 B O O O O M ! ! 💥  ║\n"
+                "╚══════════════════════════╝\n\n"
+                f"🔴 *LIVE BULLET FIRED FROM CHAMBER {chamber}/6!*\n"
+                f"`{render_cylinder(chamber, True)}`\n\n"
                 f"💀 *Khel Khatam! {safe_name} Got Shot in Round {next_round}!*\n"
                 f"💸 Iss game ke saare `+{current_pot} pts` paani me gaye!\n"
                 f"⚠️ Aur total wallet se extra `-150 Points` kat gaye!\n"
@@ -1311,9 +1389,12 @@ def handle_roulette_callback(call):
                 logging.error(f"DB update error: {e}")
 
             jackpot_text = (
-                f"👑 *ULTIMATE LEGEND! JACKPOT WON!*\n\n"
-                f"🔥 *{safe_name}* ne lagatar 6 ke 6 rounds survive kar liye!\n"
-                f"🏆 Jackpot Reward: `+{new_pot} Points`!\n"
+                "╔══════════════════════════════╗\n"
+                "║ 👑 ULTIMATE LEGEND JACKPOT 👑 ║\n"
+                "╚══════════════════════════════╝\n\n"
+                f"🏆 *{safe_name} NE LAGATAR 6 ROUNDS SURVIVE KIYE!*\n"
+                f"`[ 💨 | 💨 | 💨 | 💨 | 💨 | 💨 ]`\n\n"
+                f"🔥 Jackpot Reward: `+{new_pot} Points`!\n"
                 f"💰 Naya Balance: `{jackpot_pts} pts` | Streak: `{new_streak}` 🔥"
             )
             update_roulette_msg(chat_id, message_id, jackpot_text, reply_markup=None)
@@ -1334,8 +1415,12 @@ def handle_roulette_callback(call):
         }
 
         res_text = (
-            f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
-            f"🔥 *{safe_name} Survived Round {next_round}!*\n"
+            "╔══════════════════════════╗\n"
+            "║    💨 *C L I C K...*     ║\n"
+            "╚══════════════════════════╝\n\n"
+            f"💨 *CHAMBER {chamber}/6 WAS EMPTY!*\n"
+            f"`{render_cylinder(chamber, False)}`\n\n"
+            f"🔥 *{safe_name} Survived Round {next_round}!* 🔥\n"
             f"💰 Current Pot: `+{new_pot} Points`\n\n"
             f"Kismat chamak rahi hai! Agle round me `+{future_pot} pts` ke liye risk lega ya `+{new_pot} pts` leke nikalna hai?\n"
             f"⏱️ _(30 seconds to decide!)_"
@@ -1345,6 +1430,56 @@ def handle_roulette_callback(call):
 
         # Start new 30s timer thread
         threading.Thread(target=expire_roulette_session, args=(next_session_id, chat_id, message_id, safe_name), daemon=True).start()
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:balance|bal|wallet|points|mybalance)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_balance_command(message):
+    """
+    ZERO-TOKEN /balance command:
+    Displays user wallet, leaderboard rank, current streak, and casino survival stats.
+    """
+    user = message.from_user
+    user_id = user.id
+    raw_name = user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+
+    player = get_or_create_roulette_player(user_id, safe_name)
+    pts = player["points"]
+    streak = player["streak"]
+    best_streak = player["best_streak"]
+    wins = player.get("wins", 0)
+    losses = player.get("losses", 0)
+    total_games = wins + losses
+    win_rate = f"{(wins / total_games * 100):.1f}%" if total_games > 0 else "0.0%"
+
+    rank = 1
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) + 1 FROM roulette_scores WHERE points > ?", (pts,))
+            rank = c.fetchone()[0]
+    except Exception:
+        pass
+
+    rank_icon = "👑" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank <= 10 else "🎖️"
+
+    bal_text = (
+        f"💳 *FLASH CASINO WALLET & STATS*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Player:* {safe_name}\n"
+        f"💰 *Balance:* `{pts} Points`\n"
+        f"{rank_icon} *Leaderboard Rank:* `#{rank}`\n\n"
+        f"📊 *Roulette Performance:*\n"
+        f"🔥 Current Streak: `{streak}`\n"
+        f"🏆 Best Streak: `{best_streak}`\n"
+        f"✅ Total Survivals: `{wins}`\n"
+        f"💀 Total Deaths: `{losses}`\n"
+        f"🎯 Survival Rate: `{win_rate}`\n\n"
+        f"💡 _Quick Actions:_\n"
+        f"• `/roulette` — Risk it to multiply points!\n"
+        f"• `/daily` — Claim +100 free points daily\n"
+        f"• `/stats` — View top survivors leaderboard"
+    )
+    bot.reply_to(message, bal_text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:stats|leaderboard|top)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_roulette_stats(message):
