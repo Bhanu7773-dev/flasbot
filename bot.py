@@ -678,11 +678,6 @@ def should_respond(message, bot_username):
         if re.search(rf"\b{re.escape(nick)}\b", t):
             return True
 
-    # Master always gets a response when addressing Flash
-    if is_sender_master(message):
-        if re.search(r"\b(flash|bot|oye|sun|bhai|bata|bol)\b", t) or t == "flash":
-            return True
-
     # Filter out technical verb usage
     verb_patterns = [
         r"\b(to|can\s+i|should\s+i|how\s+to|clean|dirty|dont|don't|gotta|gonna|need\s+to|have\s+to|wanna|want\s+to|will|do\s+i|shall\s+i|must)\s+flash\b",
