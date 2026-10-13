@@ -57,6 +57,22 @@ GEMINI_MODELS = [
 
 CONTEXT_MESSAGE_LIMIT = 15
 ROMS_DATABASE_FILE = "roms_database.json"
+BOT_START_TIME = time.time()
+
+def get_uptime_string():
+    uptime_sec = int(time.time() - BOT_START_TIME)
+    days, rem = divmod(uptime_sec, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    parts.append(f"{seconds}s")
+    return " ".join(parts)
 DB_PATH = "flash_memory.db"
 # -------------------------------------------------
 
@@ -832,6 +848,28 @@ def handle_channel_post(message):
             logging.info(f"🎉 New file saved from channel: {file_name} (Post #{msg_id})")
         except Exception as e:
             logging.error(f"Error updating database: {e}")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:ping)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_ping_command(message):
+    start = time.time()
+    try:
+        msg = bot.reply_to(message, "⚡ *Pinging...*", parse_mode="Markdown")
+        latency_ms = max(1, int((time.time() - start) * 1000))
+        uptime_str = get_uptime_string()
+        catalog_count = len(ALL_ROMS)
+
+        status_text = (
+            "🏓 *Pong!*\n\n"
+            f"• *Latency:* `{latency_ms} ms`\n"
+            f"• *Uptime:* `{uptime_str}`\n"
+            f"• *Cataloged Files:* `{catalog_count}`\n"
+            "• *Status:* `100% ONLINE (24/7)`\n"
+            "• *AI Engine:* `Groq 120B (Ultra-Fast)`\n\n"
+            "💡 _Tip: Use `/give <name>` to fetch any ROM or kernel._"
+        )
+        bot.edit_message_text(status_text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Error in /ping handler: {e}")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:give)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_give_command(message):
