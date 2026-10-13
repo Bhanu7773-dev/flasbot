@@ -265,14 +265,24 @@ threading.Thread(target=self_ping_keeper, daemon=True).start()
 
 # Initialize local SQLite database
 with sqlite3.connect(DB_PATH) as conn:
-    conn.execute("""
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER,
             user_name TEXT,
             message_text TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
+        );
+        CREATE TABLE IF NOT EXISTS roulette_scores (
+            user_id INTEGER PRIMARY KEY,
+            user_name TEXT,
+            points INTEGER DEFAULT 200,
+            streak INTEGER DEFAULT 0,
+            best_streak INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            last_daily INTEGER DEFAULT 0
+        );
     """)
 
 def save_chat_message(chat_id, user_name, text):
@@ -285,6 +295,65 @@ def save_chat_message(chat_id, user_name, text):
             )
     except Exception as e:
         logging.error(f"Error saving message: {e}")
+
+
+# ----------------- RUSSIAN ROULETTE GAME ENGINE -----------------
+POOR_ROULETTE_QUOTES = [
+    "Abe gareeb, jeb me 100 points nahi hain aur chala hai maut se khelne. Go away poor kid!",
+    "Chillar party detected! Jeb me 100 points ka kaffan khareedne ke paise nahi hain, pehle chanda maango!",
+    "Group walon, koi is bhikhari ko do-chaar chillar phenk ke maaro re, zero balance leke roulette khelne aagaya!",
+    "Abe tu phone recharge karne ke paise bacha le pehle, roulette baad me khelna!",
+    "Bhai pehle katora leke group me bheek maang le, 100 points poore honge tab aana!",
+    "Error 404: Points not found. Go away poor kid, dosto se udhaar leke aaja!",
+    "Zindagi me itna gareeb koi kaise ho sakta hai? 100 points kama ke aa pehle!"
+]
+
+def get_or_create_roulette_player(user_id, user_name):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT points, streak, best_streak, wins, losses, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
+            row = c.fetchone()
+            if not row:
+                c.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily) VALUES (?, ?, 200, 0, 0, 0, 0, 0)", (user_id, user_name))
+                conn.commit()
+                row = (200, 0, 0, 0, 0, 0)
+            else:
+                c.execute("UPDATE roulette_scores SET user_name = ? WHERE user_id = ?", (user_name, user_id))
+                conn.commit()
+            return {
+                "user_id": user_id,
+                "user_name": user_name,
+                "points": row[0],
+                "streak": row[1],
+                "best_streak": row[2],
+                "wins": row[3],
+                "losses": row[4],
+                "last_daily": row[5]
+            }
+    except Exception as e:
+        logging.error(f"Error getting roulette player: {e}")
+        return {"user_id": user_id, "user_name": user_name, "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0}
+
+def get_roulette_leaderboard(caller_id=None):
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT user_name, points, streak, best_streak, user_id FROM roulette_scores ORDER BY points DESC LIMIT 10")
+            rows = c.fetchall()
+
+        medals = ["🥇", "🥈", "🥉", "4.", "5.", "6.", "7.", "8.", "9.", "10."]
+        lines = ["🏆 *RUSSIAN ROULETTE LEADERBOARD (Top Survivors):*\n"]
+        for i, r in enumerate(rows):
+            m = medals[i]
+            star = " 👑" if i == 0 else ""
+            lines.append(f"{m} *{r[0]}*{star} — `{r[1]} pts` (Streak: {r[2]} 🔥)")
+
+        lines.append("\n🎮 _Play: Type `/roulette` (Win: +150 pts | Shot: -100 pts)_")
+        lines.append("🎁 _Claim daily 100 pts: `/daily`_")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Error loading leaderboard: {e}"
 
 def get_recent_chat_history(chat_id, limit=CONTEXT_MESSAGE_LIMIT):
     """Thread-safe retrieval of recent messages."""
@@ -977,6 +1046,120 @@ def handle_channel_post(message):
             logging.info(f"🎉 New file saved from channel: {file_name} (Post #{msg_id})")
         except Exception as e:
             logging.error(f"Error updating database: {e}")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:roulette|russianroulette)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_roulette_command(message):
+    chat_id = message.chat.id
+    user = message.from_user
+    user_id = user.id
+    user_name = user.first_name or "Friend"
+
+    player = get_or_create_roulette_player(user_id, user_name)
+
+    # Check bankruptcy (needs at least 100 points)
+    if player["points"] < 100:
+        quote = random.choice(POOR_ROULETTE_QUOTES)
+        bot.reply_to(
+            message,
+            f"🚫 *Khelna Band, Gareeb!* (Balance: `{player['points']} pts`)\n\n"
+            f"_{quote}_\n\n"
+            f"💡 _Tip: `/daily` likho aur 100 free points claim karo ya group walon se bheek maango!_",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Frame 1: Spinning animation
+    try:
+        msg = bot.reply_to(message, "🌀 *Spinning the cylinder...* 🔄", parse_mode="Markdown")
+        time.sleep(1.2)
+        bot.edit_message_text(f"🔫 *Putting the gun to {user_name}'s temple...* 😰", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        time.sleep(1.2)
+    except Exception:
+        msg = message
+
+    # Chamber probability: 1 out of 6 is bullet
+    bullet = 6
+    chamber = random.randint(1, 6)
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            if chamber != bullet:
+                # Survived (+150 pts)
+                new_pts = player["points"] + 150
+                new_streak = player["streak"] + 1
+                best_streak = max(player["best_streak"], new_streak)
+                c.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
+                conn.commit()
+
+                res_text = (
+                    f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
+                    f"🎉 *{user_name} Zinda Bach Gaya!* `+150 Points`\n"
+                    f"💰 Balance: `{new_pts} pts` | Current Streak: `{new_streak}` 🔥"
+                )
+            else:
+                # Shot (-100 pts)
+                new_pts = max(0, player["points"] - 100)
+                c.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
+                conn.commit()
+
+                res_text = (
+                    f"💥 *BANG!!* Bullet fired from Chamber `6/6`!\n\n"
+                    f"💀 *Khel Khatam! {user_name} Got Shot!* `-100 Points`\n"
+                    f"💰 Balance: `{new_pts} pts` | Streak Broken ❌"
+                )
+
+        bot.edit_message_text(res_text, chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Error in roulette gameplay: {e}")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:stats|leaderboard|top)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_roulette_stats(message):
+    user_id = message.from_user.id
+    leaderboard_text = get_roulette_leaderboard(caller_id=user_id)
+    bot.reply_to(message, leaderboard_text, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:daily)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_daily_points(message):
+    user = message.from_user
+    user_id = user.id
+    user_name = user.first_name or "Friend"
+    now_ts = int(time.time())
+
+    player = get_or_create_roulette_player(user_id, user_name)
+    last_daily = player.get("last_daily", 0)
+
+    # 24 hours cooldown = 86400 seconds
+    if now_ts - last_daily < 86400:
+        remaining_sec = 86400 - (now_ts - last_daily)
+        hours = remaining_sec // 3600
+        mins = (remaining_sec % 3600) // 60
+        bot.reply_to(
+            message,
+            f"⏳ *Itni jaldi kya hai bhai?*\n"
+            f"Tum already aaj ka daily reward le chuke ho.\n"
+            f"Agla bonus `{hours}h {mins}m` baad milega! (Balance: `{player['points']} pts`)",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            new_pts = player["points"] + 100
+            c.execute("UPDATE roulette_scores SET points = ?, last_daily = ? WHERE user_id = ?", (new_pts, now_ts, user_id))
+            conn.commit()
+
+        bot.reply_to(
+            message,
+            f"🎁 *Daily Bonus Claimed!*\n\n"
+            f"*{user_name}* ko mile `+100 Free Points`!\n"
+            f"💰 Naya Balance: `{new_pts} pts`\n\n"
+            f"Ab jao aur `/roulette` khel ke kismat aazmao!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Error claiming daily: {e}")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:compare)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_compare_command(message):
