@@ -286,6 +286,111 @@ with sqlite3.connect(DB_PATH) as conn:
         );
     """)
 
+BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 6056618592))
+
+def sync_to_telegram_cloud():
+    """Syncs SQLite roulette scores to pinned cloud storage message in Telegram."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT user_id, user_name, points, streak, best_streak, wins, losses, last_daily FROM roulette_scores")
+            rows = c.fetchall()
+
+        if not rows:
+            return
+
+        players = {}
+        for r in rows:
+            players[str(r[0])] = {
+                "user_name": r[1],
+                "points": r[2],
+                "streak": r[3],
+                "best_streak": r[4],
+                "wins": r[5],
+                "losses": r[6],
+                "last_daily": r[7]
+            }
+
+        payload = {
+            "app": "flash_casino_cloud_backup",
+            "updated_at": int(time.time()),
+            "total_players": len(players),
+            "players": players
+        }
+        json_str = json.dumps(payload, indent=2, ensure_ascii=False)
+        ts = time.strftime('%Y-%m-%d %H:%M:%S UTC')
+        msg_content = f"📦 *FLASH CLOUD DATABASE BACKUP*\n`{ts}`\n\n```json\n{json_str}\n```"
+
+        chat = bot.get_chat(BACKUP_CHAT_ID)
+        pinned = chat.pinned_message
+
+        if pinned and pinned.text and "FLASH CLOUD DATABASE BACKUP" in pinned.text:
+            try:
+                bot.edit_message_text(msg_content, chat_id=BACKUP_CHAT_ID, message_id=pinned.message_id, parse_mode="Markdown")
+                logging.info(f"☁️ Cloud backup updated (Message #{pinned.message_id})")
+                return
+            except Exception as e:
+                if "message is not modified" in str(e):
+                    return
+
+        new_msg = bot.send_message(BACKUP_CHAT_ID, msg_content, parse_mode="Markdown")
+        bot.pin_chat_message(BACKUP_CHAT_ID, new_msg.message_id, disable_notification=True)
+        logging.info(f"☁️ Cloud backup created & pinned (Message #{new_msg.message_id})")
+    except Exception as e:
+        logging.error(f"Error in sync_to_telegram_cloud: {e}")
+
+def schedule_cloud_sync():
+    """Runs sync_to_telegram_cloud in a background daemon thread."""
+    threading.Thread(target=sync_to_telegram_cloud, daemon=True).start()
+
+def restore_from_telegram_cloud():
+    """Restores database from Telegram pinned cloud backup on startup."""
+    try:
+        chat = bot.get_chat(BACKUP_CHAT_ID)
+        if not chat.pinned_message or not chat.pinned_message.text:
+            logging.info("ℹ️ No pinned cloud backup found in backup chat.")
+            return False
+
+        text = chat.pinned_message.text
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1:
+            return False
+
+        data = json.loads(text[start:end+1])
+        players = data.get("players", {})
+        if not players:
+            return False
+
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            for uid_str, p in players.items():
+                uid = int(uid_str)
+                c.execute("""INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                             ON CONFLICT(user_id) DO UPDATE SET
+                             points = excluded.points,
+                             user_name = excluded.user_name,
+                             streak = excluded.streak,
+                             best_streak = excluded.best_streak,
+                             wins = excluded.wins,
+                             losses = excluded.losses,
+                             last_daily = excluded.last_daily""",
+                          (uid, p["user_name"], p["points"], p["streak"], p["best_streak"], p["wins"], p["losses"], p["last_daily"]))
+            conn.commit()
+
+        logging.info(f"✅ Successfully restored {len(players)} players from Telegram Cloud Backup!")
+        return True
+    except Exception as e:
+        logging.error(f"❌ Error restoring from Telegram Cloud Backup: {e}")
+        return False
+
+# Restore on startup
+try:
+    restore_from_telegram_cloud()
+except Exception as _e:
+    logging.warning(f"Initial cloud restore warning: {_e}")
+
 def save_chat_message(chat_id, user_name, text):
     """Thread-safe storage of group messages for conversational context."""
     try:
@@ -1212,6 +1317,7 @@ def handle_roulette_command(message):
                 conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
         except Exception as e:
             logging.error(f"DB update error: {e}")
+        schedule_cloud_sync()
 
         res_text = (
             "╔══════════════════════════╗\n"
@@ -1301,6 +1407,7 @@ def handle_roulette_callback(call):
                 conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
         except Exception as e:
             logging.error(f"DB update error: {e}")
+        schedule_cloud_sync()
 
         cashout_text = (
             "╔══════════════════════════════╗\n"
@@ -1358,6 +1465,7 @@ def handle_roulette_callback(call):
                     conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
             except Exception as e:
                 logging.error(f"DB update error: {e}")
+            schedule_cloud_sync()
 
             death_text = (
                 "╔══════════════════════════╗\n"
@@ -1518,6 +1626,7 @@ def handle_daily_points(message):
             new_pts = player["points"] + 100
             c.execute("UPDATE roulette_scores SET points = ?, last_daily = ? WHERE user_id = ?", (new_pts, now_ts, user_id))
             conn.commit()
+            schedule_cloud_sync()
 
         bot.reply_to(
             message,
@@ -1529,6 +1638,14 @@ def handle_daily_points(message):
         )
     except Exception as e:
         logging.error(f"Error claiming daily: {e}")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:sync|backup|savedb)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_manual_sync(message):
+    user_id = message.from_user.id
+    if user_id != 6056618592:
+        return
+    schedule_cloud_sync()
+    bot.reply_to(message, "☁️ *Cloud Database Synced to Telegram Backup!*", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:compare)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_compare_command(message):
