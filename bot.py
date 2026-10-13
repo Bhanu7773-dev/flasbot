@@ -59,6 +59,105 @@ CONTEXT_MESSAGE_LIMIT = 15
 ROMS_DATABASE_FILE = "roms_database.json"
 BOT_START_TIME = time.time()
 
+# ----------------- ROM COMPARISON KNOWLEDGE BASE -----------------
+ROM_ALIASES = {
+    "evo": "evolution",
+    "evox": "evolution",
+    "evolutionx": "evolution",
+    "risingos": "rising",
+    "superioros": "superior",
+    "voltageos": "voltage",
+    "los": "lineage",
+    "pixel": "pixelos",
+    "derp": "derpfest",
+    "crd": "crdroid"
+}
+
+ROM_PROFILES = {
+    "axion": {
+        "name": "Axion OS",
+        "type": "Gaming & Customization",
+        "customization": "9.5/10 (Deep Tweaks & Theming)",
+        "perf": "9.5/10 (Top FPS, Thermal Tweaks)",
+        "battery": "8/10 (Decent for daily gaming)",
+        "features": "Gaming Mode, Custom QS styles, RUI2 & RUI3 builds",
+        "verdict": "Hardcore Gamers aur Customization Lovers ke liye No. 1 choice!"
+    },
+    "pixelos": {
+        "name": "PixelOS",
+        "type": "Pure Pixel Experience",
+        "customization": "6/10 (Clean, minimal Pixel look)",
+        "perf": "8.5/10 (Smooth 90Hz)",
+        "battery": "9/10 (Solid daily endurance)",
+        "features": "Unlimited Google Photos, Pixel Launcher, Zero Bloat",
+        "verdict": "Clean, smooth aur stable daily driver ke liye best!"
+    },
+    "crdroid": {
+        "name": "crDroid",
+        "type": "Max Customization King",
+        "customization": "10/10 (Infinite crDroid Settings)",
+        "perf": "8.5/10 (Stable & Snappy)",
+        "battery": "8.5/10 (Good standby)",
+        "features": "Control har ek pixel pe, LineageOS stability base",
+        "verdict": "Har cheez customize karne ke shaukeen logon ke liye!"
+    },
+    "lineage": {
+        "name": "LineageOS",
+        "type": "Pure Open Source",
+        "customization": "4/10 (Minimal AOSP Baseline)",
+        "perf": "8.5/10 (Lightweight & responsive)",
+        "battery": "9.5/10 (Maximum standby)",
+        "features": "Zero telemetry, lightweight, rock solid stability",
+        "verdict": "Privacy aur maximum battery life ke liye!"
+    },
+    "derpfest": {
+        "name": "DerpFest",
+        "type": "Aesthetic & Modern",
+        "customization": "9/10 (DerpSpace Goodies)",
+        "perf": "9/10 (Fluid UI & responsive)",
+        "battery": "8/10 (Moderate)",
+        "features": "Sleek UI fonts, lockscreen clock styles, modern icons",
+        "verdict": "Sundar UI aur smooth animations ke liye!"
+    },
+    "evolution": {
+        "name": "Evolution X",
+        "type": "Pixel + Heavy Tweaks",
+        "customization": "9.5/10 (The Evolver Hub)",
+        "perf": "9/10 (Great performance)",
+        "battery": "8/10 (Good)",
+        "features": "Pixel look ke sath crDroid jaisi customization",
+        "verdict": "Pixel Look aur bhar-bhar ke features dono chahiye toh!"
+    },
+    "rising": {
+        "name": "RisingOS",
+        "type": "HyperOS / iOS Hybrid",
+        "customization": "9.5/10 (Personalization Labs)",
+        "perf": "8.5/10 (Smooth)",
+        "battery": "8/10 (Good)",
+        "features": "Unique QS headers, custom volume panels, lockscreens",
+        "verdict": "Modern iOS/HyperOS style aesthetic lovers ke liye!"
+    },
+    "superior": {
+        "name": "SuperiorOS",
+        "type": "Balanced Performance",
+        "customization": "8/10 (Superior Lab)",
+        "perf": "9/10 (Very Snappy)",
+        "battery": "8.5/10 (Great daily backup)",
+        "features": "Clean AOSP base with essential tweaks only",
+        "verdict": "Bina kisi lag ke balance performance chahiye toh!"
+    },
+    "voltage": {
+        "name": "VoltageOS",
+        "type": "Lightweight & Battery Focused",
+        "customization": "7.5/10 (Power Hub)",
+        "perf": "8.5/10 (Smooth)",
+        "battery": "9.5/10 (Outstanding Battery)",
+        "features": "Minimalist, power-efficient, quick app opening",
+        "verdict": "Heavy battery backup aur clean setup ke liye!"
+    }
+}
+
+
 def get_uptime_string():
     uptime_sec = int(time.time() - BOT_START_TIME)
     days, rem = divmod(uptime_sec, 86400)
@@ -848,6 +947,93 @@ def handle_channel_post(message):
             logging.info(f"🎉 New file saved from channel: {file_name} (Post #{msg_id})")
         except Exception as e:
             logging.error(f"Error updating database: {e}")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:compare)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_compare_command(message):
+    """
+    ZERO-TOKEN ROM COMPARISON ENGINE:
+    Compare any 2 Custom ROMs (e.g. /compare axion pixelos)
+    """
+    text = (message.text or "").strip()
+    # Strip command prefix
+    args_text = re.sub(r'^[/\.!](?:compare)(?:@\w+)?\s*', '', text, flags=re.IGNORECASE).strip()
+    # Split by whitespace or 'vs'
+    parts = [p.lower().strip() for p in re.split(r'\s+(?:vs\s+)?|\s+', args_text) if p.strip()]
+
+    # If no arguments provided
+    if not parts:
+        available = ", ".join([v["name"] for v in ROM_PROFILES.values()])
+        bot.reply_to(
+            message,
+            "⚖️ *Kaunsi 2 ROMs compare karni hain bhai?*\n\n"
+            "*Usage:*\n"
+            "• `/compare axion pixelos`\n"
+            "• `/compare crdroid lineage`\n"
+            "• `/compare derpfest evox`\n"
+            "• `/compare risingos superior`\n\n"
+            f"📋 *Available ROMs:* {available}",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Normalize aliases
+    rom1_key = ROM_ALIASES.get(parts[0], parts[0])
+    
+    # If single ROM provided: show complete profile
+    if len(parts) == 1:
+        if rom1_key in ROM_PROFILES:
+            r = ROM_PROFILES[rom1_key]
+            card = (
+                f"📊 *{r['name']} Profile* ({r['type']})\n\n"
+                f"• *Customization:* {r['customization']}\n"
+                f"• *Performance:* {r['perf']}\n"
+                f"• *Battery Life:* {r['battery']}\n"
+                f"• *Highlights:* {r['features']}\n\n"
+                f"🎯 *Verdict:* {r['verdict']}\n\n"
+                f"💡 _Tip: Doosri ROM ke sath compare karne ke liye likho: `/compare {rom1_key} pixelos`_"
+            )
+            bot.reply_to(message, card, parse_mode="Markdown")
+        else:
+            bot.reply_to(message, f"❌ '{parts[0]}' ka profile available nahi hai. Try: `axion`, `pixelos`, `crdroid`, `lineage`, `derpfest`, `evolution`, etc.", parse_mode="Markdown")
+        return
+
+    rom2_key = ROM_ALIASES.get(parts[1], parts[1])
+
+    if rom1_key not in ROM_PROFILES or rom2_key not in ROM_PROFILES:
+        missing = parts[0] if rom1_key not in ROM_PROFILES else parts[1]
+        available = ", ".join([v["name"] for v in ROM_PROFILES.values()])
+        bot.reply_to(
+            message,
+            f"❌ *'{missing}' ka comparison data nahi mila.*\n\n"
+            f"Available ROMs: {available}\n"
+            "Example: `/compare axion pixelos`",
+            parse_mode="Markdown"
+        )
+        return
+
+    r1 = ROM_PROFILES[rom1_key]
+    r2 = ROM_PROFILES[rom2_key]
+
+    card = (
+        f"⚖️ *ROM COMPARISON:* {r1['name']} *vs* {r2['name']}\n\n"
+        f"🎨 *Customization:*\n"
+        f"• *{r1['name']}:* {r1['customization']}\n"
+        f"• *{r2['name']}:* {r2['customization']}\n\n"
+        f"🚀 *Gaming & Performance:*\n"
+        f"• *{r1['name']}:* {r1['perf']}\n"
+        f"• *{r2['name']}:* {r2['perf']}\n\n"
+        f"🔋 *Battery Life:*\n"
+        f"• *{r1['name']}:* {r1['battery']}\n"
+        f"• *{r2['name']}:* {r2['battery']}\n\n"
+        f"✨ *Key Features:*\n"
+        f"• *{r1['name']}:* {r1['features']}\n"
+        f"• *{r2['name']}:* {r2['features']}\n\n"
+        f"🎯 *Final Verdict:*\n"
+        f"👉 *{r1['name']}:* {r1['verdict']}\n"
+        f"👉 *{r2['name']}:* {r2['verdict']}\n\n"
+        f"💡 _Download: `/give {rom1_key}` ya `/give {rom2_key}` likho!_"
+    )
+    bot.reply_to(message, card, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:ping)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_ping_command(message):
