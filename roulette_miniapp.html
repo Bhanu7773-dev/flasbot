@@ -1,831 +1,366 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Flash Russian Roulette</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg-dark: #0a0c10;
-      --card-bg: rgba(18, 22, 31, 0.85);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --red-neon: #ff2a55;
-      --red-glow: rgba(255, 42, 85, 0.4);
-      --gold: #ffb800;
-      --gold-glow: rgba(255, 184, 0, 0.35);
-      --cyan: #00f2fe;
-      --green: #00e676;
-      --text-main: #f0f3f8;
-      --text-muted: #8b94a5;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Flash Russian Roulette</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+:root{
+  --wood:#24150c; --wood-2:#33200f; --plank:#4a2f18;
+  --paper:#e6d2a2; --paper-dk:#cdb582; --ink:#2a1a0c;
+  --rust:#9c2f1e; --brass:#c08a2e; --iron:#2b2b2e; --sage:#4f6b3a;
+  --display:'Rye',Georgia,serif; --type:'Special Elite','Courier New',monospace;
+  --g:16px; /* single gutter used everywhere */
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{height:100%}
+body{
+  background:var(--wood);
+  background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 2px,transparent 2px 64px),
+    repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 1px,transparent 1px 7px);
+  color:var(--paper);font-family:var(--type);
+  padding:max(var(--g),env(safe-area-inset-top)) var(--g) max(var(--g),env(safe-area-inset-bottom));
+  display:flex;justify-content:center;
+}
+/* one column, one gap: everything shares the same left/right edges */
+.wrap{width:100%;max-width:420px;display:grid;grid-template-rows:auto 1fr auto;gap:var(--g)}
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
+/* header plank */
+.plank{display:grid;grid-template-columns:48px 1fr auto;align-items:center;column-gap:12px;height:72px;padding:0 var(--g);
+  background:linear-gradient(180deg,var(--plank),#3a2412);border:2px solid #1a0e06;border-radius:6px;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.1),0 6px 0 #130a04}
+.avatar{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--paper);color:var(--rust);
+  border:3px solid var(--brass);font-family:var(--display);font-size:22px;line-height:1}
+.who{min-width:0}
+.name{font-family:var(--display);font-size:17px;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank{font-size:12px;color:var(--paper-dk);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wallet{display:grid;justify-items:end;row-gap:2px}
+.wallet small{font-size:11px;color:var(--paper-dk)}
+.wallet b{font-family:var(--display);font-weight:400;font-size:24px;line-height:1;color:var(--brass)}
 
-    body {
-      background-color: var(--bg-dark);
-      background-image: 
-        radial-gradient(circle at 50% 15%, rgba(255, 42, 85, 0.12) 0%, transparent 60%),
-        radial-gradient(circle at 50% 85%, rgba(0, 242, 254, 0.06) 0%, transparent 60%);
-      color: var(--text-main);
-      font-family: 'Outfit', -apple-system, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px;
-      overflow-x: hidden;
-    }
+/* poster */
+.poster{position:relative;display:grid;grid-template-rows:auto auto auto 1fr auto;justify-items:center;row-gap:var(--g);
+  padding:calc(var(--g) + 8px) var(--g) var(--g);color:var(--ink);
+  background:radial-gradient(120% 90% at 50% 40%,var(--paper),var(--paper-dk));
+  border:3px solid var(--ink);border-radius:4px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 8px 0 #130a04}
+.poster::before,.poster::after{content:"";position:absolute;top:10px;width:10px;height:10px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#d9b46a,#6e4d17);box-shadow:0 1px 1px rgba(0,0,0,.5)}
+.poster::before{left:10px}.poster::after{right:10px}
+.title{font-family:var(--display);font-size:30px;line-height:1;text-align:center}
+.round{font-size:13px;text-align:center;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;width:100%}
+.reward{display:grid;justify-items:center;row-gap:4px;width:100%}
+.reward small{font-size:13px}
+.pot{font-family:var(--display);font-size:56px;line-height:1;color:var(--rust);display:flex;align-items:baseline;justify-content:center;gap:8px}
+.pot i{font-style:normal;font-size:18px;color:var(--ink)}
+.pot.bump{animation:bump .4s ease}
+@keyframes bump{40%{transform:scale(1.08)}}
 
-    /* Screen shake on death */
-    @keyframes screenShake {
-      0%, 100% { transform: translate(0, 0) rotate(0deg); }
-      10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 6px) rotate(-1.5deg); }
-      20%, 40%, 60%, 80% { transform: translate(8px, -6px) rotate(1.5deg); }
-    }
+.ladder{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;width:100%}
+.rung{display:grid;justify-items:center;row-gap:2px;padding:6px 0;border:2px solid var(--ink);border-radius:3px;font-size:11px;transition:.25s}
+.rung b{font-family:var(--display);font-weight:400;font-size:14px}
+.rung.done{background:var(--sage);color:var(--paper);border-color:#2c3d20}
+.rung.now{background:var(--ink);color:var(--paper)}
 
-    .shake {
-      animation: screenShake 0.6s cubic-bezier(.36,.07,.19,.97) both;
-    }
+.cyl{width:min(100%,220px);aspect-ratio:1;align-self:center;position:relative}
+.notch{position:absolute;left:50%;top:-8px;transform:translateX(-50%);border:9px solid transparent;border-top:14px solid var(--rust);border-bottom:0;z-index:2}
+#revolverSvg{width:100%;height:100%;display:block;transition:transform .9s cubic-bezier(.12,.8,.25,1);filter:drop-shadow(0 8px 6px rgba(0,0,0,.45))}
+.chamber{transition:fill .3s,stroke .3s}
 
-    /* Top Player Bar */
-    .top-bar {
-      width: 100%;
-      max-width: 420px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      backdrop-filter: blur(12px);
-      border-radius: 18px;
-      padding: 10px 16px;
-      margin-bottom: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    }
+.status{width:100%;height:44px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;line-height:1.25;border-top:2px dashed var(--ink);padding-top:var(--g);box-sizing:content-box}
+.status b{font-family:var(--display);font-weight:400}
+.status.bad{color:var(--rust)}.status.good{color:var(--sage)}
 
-    .player-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+/* actions: identical rows, label left / value right */
+.actions{display:grid;gap:12px}
+.btn{display:grid;grid-template-columns:1fr auto;align-items:center;height:60px;padding:0 20px;border-radius:4px;cursor:pointer;
+  font-family:var(--display);font-size:20px;text-align:left;border:3px solid #1a0e06;transition:transform .12s,opacity .2s}
+.btn small{font-family:var(--type);font-size:14px;opacity:.9}
+.btn:active{transform:translateY(2px)}
+.btn:focus-visible{outline:3px solid var(--paper);outline-offset:2px}
+.fire{background:linear-gradient(180deg,#b63a26,var(--rust));color:var(--paper);box-shadow:inset 0 2px 0 rgba(255,255,255,.25),0 5px 0 #130a04}
+.cash{background:linear-gradient(180deg,#d29c3e,var(--brass));color:var(--ink);box-shadow:inset 0 2px 0 rgba(255,255,255,.3),0 5px 0 #130a04}
+.btn.off{opacity:.45;pointer-events:none}
+.note{text-align:center;font-size:12px;color:var(--paper-dk);line-height:1.4}
+.note.warn{color:#ff9a86}
 
-    .player-avatar {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--red-neon), #ff6b8b);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 16px;
-      color: #fff;
-      border: 2px solid rgba(255,255,255,0.2);
-    }
-
-    .player-name {
-      font-weight: 700;
-      font-size: 15px;
-      color: var(--text-main);
-      max-width: 110px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .player-rank {
-      font-size: 11px;
-      color: var(--gold);
-      font-weight: 600;
-    }
-
-    .balance-chip {
-      background: rgba(255, 184, 0, 0.12);
-      border: 1px solid rgba(255, 184, 0, 0.3);
-      padding: 6px 14px;
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .balance-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-      color: var(--gold);
-      font-size: 15px;
-    }
-
-    /* Main Arena Card */
-    .arena-card {
-      width: 100%;
-      max-width: 420px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 24px;
-      padding: 20px 18px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      position: relative;
-      box-shadow: 0 16px 36px rgba(0,0,0,0.4);
-      flex: 1;
-      justify-content: space-around;
-      margin-bottom: 12px;
-    }
-
-    .round-badge {
-      background: rgba(255, 42, 85, 0.15);
-      border: 1px solid var(--red-glow);
-      color: var(--red-neon);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 1.5px;
-      padding: 5px 14px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-
-    .pot-display {
-      text-align: center;
-      margin-bottom: 10px;
-    }
-
-    .pot-label {
-      font-size: 11px;
-      letter-spacing: 1.5px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      font-weight: 600;
-    }
-
-    .pot-value {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 36px;
-      font-weight: 900;
-      color: #fff;
-      text-shadow: 0 0 20px var(--gold-glow);
-    }
-
-    .pot-value span {
-      color: var(--gold);
-      font-size: 20px;
-    }
-
-    /* Cylinder SVG Visual */
-    .cylinder-container {
-      position: relative;
-      width: 220px;
-      height: 220px;
-      margin: 10px 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .revolver-svg {
-      width: 100%;
-      height: 100%;
-      filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.6));
-      transition: transform 0.8s cubic-bezier(0.15, 0.85, 0.35, 1.2);
-    }
-
-    .chamber-slot {
-      transition: fill 0.3s ease, stroke 0.3s ease;
-    }
-
-    .target-crosshair {
-      position: absolute;
-      top: 15px;
-      width: 32px;
-      height: 32px;
-      pointer-events: none;
-      animation: pulseTarget 1.5s infinite;
-    }
-
-    @keyframes pulseTarget {
-      0%, 100% { opacity: 0.8; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 8px var(--red-neon)); }
-    }
-
-    /* Suspense / Status Banner */
-    .status-banner {
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-muted);
-      padding: 0 10px;
-    }
-
-    .status-highlight {
-      color: #fff;
-      font-weight: 700;
-    }
-
-    /* Action Buttons Area */
-    .action-area {
-      width: 100%;
-      max-width: 420px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 16px;
-      border-radius: 18px;
-      font-family: 'Outfit', sans-serif;
-      font-size: 16px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .btn:active {
-      transform: scale(0.97);
-    }
-
-    .btn-fire {
-      background: linear-gradient(135deg, #ff1a47, #d9002f);
-      color: #fff;
-      box-shadow: 0 8px 24px var(--red-glow);
-    }
-
-    .btn-fire:hover {
-      box-shadow: 0 10px 30px rgba(255, 42, 85, 0.6);
-    }
-
-    .btn-cashout {
-      background: linear-gradient(135deg, #ffb800, #e69500);
-      color: #1a1200;
-      box-shadow: 0 8px 24px var(--gold-glow);
-    }
-
-    .btn-cashout:hover {
-      box-shadow: 0 10px 30px rgba(255, 184, 0, 0.6);
-    }
-
-    .btn-disabled {
-      opacity: 0.4;
-      pointer-events: none;
-      filter: grayscale(1);
-    }
-
-    .sub-notice {
-      text-align: center;
-      font-size: 11px;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    /* Outcome Overlays */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(5, 7, 10, 0.88);
-      backdrop-filter: blur(12px);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-      z-index: 100;
-    }
-
-    .modal-card {
-      width: 100%;
-      max-width: 360px;
-      background: #141720;
-      border: 1px solid var(--card-border);
-      border-radius: 26px;
-      padding: 28px 20px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
-      animation: popIn 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    }
-
-    @keyframes popIn {
-      from { transform: scale(0.85); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
-    }
-
-    .modal-icon {
-      font-size: 52px;
-      margin-bottom: 12px;
-    }
-
-    .modal-title {
-      font-size: 24px;
-      font-weight: 900;
-      margin-bottom: 6px;
-    }
-
-    .modal-desc {
-      font-size: 14px;
-      color: var(--text-muted);
-      margin-bottom: 20px;
-      line-height: 1.5;
-    }
-
-    .modal-stat {
-      background: rgba(255,255,255,0.05);
-      border-radius: 14px;
-      padding: 10px 18px;
-      width: 100%;
-      margin-bottom: 20px;
-      display: flex;
-      justify-content: space-between;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-    }
-  </style>
+/* result */
+.sheet{position:fixed;inset:0;background:rgba(15,8,3,.82);display:none;align-items:center;justify-content:center;padding:var(--g);z-index:50}
+.sheet.show{display:flex}
+.card{width:100%;max-width:388px;display:grid;justify-items:center;row-gap:12px;text-align:center;padding:28px var(--g) var(--g);
+  background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:4px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 10px 0 #130a04;animation:pop .3s ease-out}
+@keyframes pop{from{transform:scale(.92);opacity:0}}
+.card h2{font-family:var(--display);font-weight:400;font-size:30px;line-height:1.1}
+.card p{font-size:14px;line-height:1.45}
+.delta{width:100%;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:10px 0;font-family:var(--display);font-size:42px;line-height:1}
+.card .btn{width:100%;margin-top:4px;grid-template-columns:1fr}
+.card .btn span{text-align:center}
+.shake{animation:shake .55s both}
+@keyframes shake{20%,60%{transform:translate(-6px,3px) rotate(-.6deg)}40%,80%{transform:translate(6px,-3px) rotate(.6deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-height:720px){.cyl{width:min(100%,170px)}.pot{font-size:44px}.title{font-size:26px}}
+</style>
 </head>
 <body>
-
-  <!-- Top Player Info -->
-  <div class="top-bar">
-    <div class="player-info">
-      <div class="player-avatar" id="playerAvatar">?</div>
-      <div>
-        <div class="player-name" id="playerName">Loading...</div>
-        <div class="player-rank" id="playerRank">Survivor Rank</div>
-      </div>
-    </div>
-    <div class="balance-chip">
-      <span>💰</span>
-      <span class="balance-val" id="playerBalance">0</span>
-    </div>
+<div class="wrap">
+  <div class="plank">
+    <div class="avatar" id="playerAvatar">?</div>
+    <div class="who"><div class="name" id="playerName">Loading</div><div class="rank" id="playerRank">Greenhorn</div></div>
+    <div class="wallet"><small>Wallet</small><b id="playerBalance">0</b></div>
   </div>
 
-  <!-- Arena Card -->
-  <div class="arena-card" id="arenaCard">
-    <div class="round-badge" id="roundBadge">ROUND 1 of 6</div>
-
-    <div class="pot-display">
-      <div class="pot-label">Current Prize Pot</div>
-      <div class="pot-value" id="potValue">+50 <span>PTS</span></div>
-    </div>
-
-    <!-- 6-Chamber Revolver SVG Cylinder -->
-    <div class="cylinder-container">
-      <svg class="target-crosshair" viewBox="0 0 24 24" fill="none" stroke="#ff2a55" stroke-width="2.5">
-        <circle cx="12" cy="12" r="9"/>
-        <line x1="12" y1="1" x2="12" y2="6"/>
-        <line x1="12" y1="18" x2="12" y2="23"/>
-        <line x1="1" y1="12" x2="6" y2="12"/>
-        <line x1="18" y1="12" x2="23" y2="12"/>
-      </svg>
-
-      <svg id="revolverSvg" class="revolver-svg" viewBox="0 0 200 200">
-        <!-- Outer steel rim -->
-        <circle cx="100" cy="100" r="90" fill="#1c212c" stroke="#333b4b" stroke-width="5"/>
-        <circle cx="100" cy="100" r="82" fill="none" stroke="#12161f" stroke-width="2"/>
-        <!-- Center brass cylinder hub -->
-        <circle cx="100" cy="100" r="26" fill="#2d3342" stroke="#4f596f" stroke-width="4"/>
-        <circle cx="100" cy="100" r="10" fill="#ffb800" opacity="0.8"/>
-        <!-- 6 Chambers -->
-        <circle id="slot1" class="chamber-slot" cx="100" cy="42" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
-        <circle id="slot2" class="chamber-slot" cx="150" cy="71" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
-        <circle id="slot3" class="chamber-slot" cx="150" cy="129" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
-        <circle id="slot4" class="chamber-slot" cx="100" cy="158" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
-        <circle id="slot5" class="chamber-slot" cx="50" cy="129" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
-        <circle id="slot6" class="chamber-slot" cx="50" cy="71" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+  <div class="poster" id="arenaCard">
+    <div class="title">Dead or alive?</div>
+    <div class="round" id="roundBadge">Round 1 of 6</div>
+    <div class="reward"><small>Reward</small><div class="pot" id="potValue">50<i>pts</i></div></div>
+    <div class="cyl">
+      <div class="notch"></div>
+      <svg id="revolverSvg" viewBox="0 0 200 200" aria-label="Revolver cylinder">
+        <defs>
+          <radialGradient id="steel" cx="35%" cy="30%" r="85%"><stop offset="0" stop-color="#6f6a62"/><stop offset=".55" stop-color="#34322f"/><stop offset="1" stop-color="#171615"/></radialGradient>
+          <radialGradient id="brs" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#f0d38a"/><stop offset="1" stop-color="#7d5a1c"/></radialGradient>
+        </defs>
+        <circle cx="100" cy="100" r="94" fill="url(#steel)" stroke="#0e0c0a" stroke-width="3"/>
+        <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,255,255,.14)"/>
+        <g id="flutes" fill="#0f0e0d"></g>
+        <circle cx="100" cy="100" r="25" fill="url(#brs)" stroke="#0e0c0a" stroke-width="2"/>
+        <circle cx="100" cy="100" r="7" fill="#1a1205"/>
+        <circle id="slot1" class="chamber" cx="100" cy="42" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        <circle id="slot2" class="chamber" cx="150" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        <circle id="slot3" class="chamber" cx="150" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        <circle id="slot4" class="chamber" cx="100" cy="158" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        <circle id="slot5" class="chamber" cx="50" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        <circle id="slot6" class="chamber" cx="50" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
       </svg>
     </div>
-
-    <!-- Status / Tension -->
-    <div class="status-banner" id="statusBanner">
-      Spin cylinder & pull trigger to test your luck!
-    </div>
+    <div class="ladder" id="ladder"></div>
+    <div class="status" id="statusBanner">Spin the cylinder, then pull the trigger.</div>
   </div>
 
-  <!-- Action Controls -->
-  <div class="action-area">
-    <button class="btn btn-fire" id="btnFire">
-      <span>🔫</span>
-      <span id="btnFireText">PULL TRIGGER (ROUND 1)</span>
-    </button>
-    <button class="btn btn-cashout" id="btnCashout" style="display: none;">
-      <span>💰</span>
-      <span id="btnCashoutText">CASH OUT (+50 PTS)</span>
-    </button>
-    <div class="sub-notice" id="subNotice">⚠️ Death penalty: -150 pts from wallet if live round fires</div>
+  <div class="actions">
+    <button class="btn fire" id="btnFire"><span id="btnFireText">Pull trigger</span><small id="btnFireSub">+50 pts</small></button>
+    <button class="btn cash" id="btnCashout" style="display:none"><span>Cash out</span><small id="btnCashoutText">+0 pts</small></button>
+    <div class="note" id="subNotice">If the live round fires, you lose 150 pts from your wallet.</div>
   </div>
+</div>
 
-  <!-- Death / Win Modals -->
-  <div class="modal-overlay" id="outcomeModal">
-    <div class="modal-card">
-      <div class="modal-icon" id="modalIcon">💥</div>
-      <div class="modal-title" id="modalTitle">KHEL KHATAM!</div>
-      <div class="modal-desc" id="modalDesc">Live round hit! You lost all points.</div>
-      <div class="modal-stat">
-        <span style="color: var(--text-muted);">Points Change:</span>
-        <span id="modalPtsDelta" style="color: var(--red-neon);">-150 PTS</span>
-      </div>
-      <button class="btn btn-fire" id="modalBtn">TRY AGAIN</button>
-    </div>
+<div class="sheet" id="outcomeModal">
+  <div class="card">
+    <h2 id="modalTitle">Khel khatam</h2>
+    <p id="modalDesc"></p>
+    <div class="delta" id="modalPtsDelta">-150</div>
+    <button class="btn fire" id="modalBtn"><span>Ride again</span></button>
   </div>
+</div>
 
-  <script>
-    // Initialize Telegram WebApp
-    const tg = window.Telegram?.WebApp;
-    if (tg) {
-      tg.ready();
-      tg.expand();
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#24150c'); tg.setBackgroundColor('#24150c'); } catch(e){} }
+
+/* audio: synthesized firearm sounds (no files needed) */
+const AC = window.AudioContext || window.webkitAudioContext; let actx=null, master=null, verb=null;
+function ctx(){
+  if(!actx){
+    actx=new AC();
+    master=actx.createDynamicsCompressor();
+    master.threshold.value=-14; master.ratio.value=8; master.attack.value=.002; master.release.value=.2;
+    master.connect(actx.destination);
+    const len=Math.floor(actx.sampleRate*1.6), ir=actx.createBuffer(2,len,actx.sampleRate);
+    for(let ch=0;ch<2;ch++){ const d=ir.getChannelData(ch); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2); }
+    verb=actx.createConvolver(); verb.buffer=ir;
+    const vg=actx.createGain(); vg.gain.value=.55; verb.connect(vg); vg.connect(master);
+  }
+  if(actx.state==='suspended') actx.resume();
+  return actx;
+}
+function noise(c,dur,decay){
+  const n=Math.floor(c.sampleRate*dur), b=c.createBuffer(1,n,c.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(c.sampleRate*decay));
+  const s=c.createBufferSource(); s.buffer=b; return s;
+}
+function burst(t,o){
+  const {dur=.05,decay=.01,type='bandpass',freq=3000,q=1,vol=1,f2=null,wet=0}=o;
+  const c=ctx(), s=noise(c,dur,decay), f=c.createBiquadFilter(), g=c.createGain();
+  f.type=type; f.frequency.setValueAtTime(freq,t); if(f2) f.frequency.exponentialRampToValueAtTime(f2,t+dur); f.Q.value=q;
+  g.gain.value=vol; s.connect(f); f.connect(g); g.connect(master);
+  if(wet){ const w=c.createGain(); w.gain.value=wet; g.connect(w); w.connect(verb); }
+  s.start(t);
+}
+function ping(t,freq,vol,dur,type='sine'){
+  const c=ctx(), o=c.createOscillator(), g=c.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur);
+}
+function thump(t,f0,f1,vol,dur){
+  const c=ctx(), o=c.createOscillator(), g=c.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur);
+}
+function metalClick(t,vol=1,pitch=1){
+  burst(t,{dur:.025,decay:.004,freq:3600*pitch,q:6,vol:.9*vol});
+  ping(t,2300*pitch,.12*vol,.05,'square');
+  ping(t,1450*pitch,.1*vol,.07,'triangle');
+}
+/* cylinder spin: whirr plus a ratchet that slows down */
+function playSpin(){
+  const c=ctx(); let t=c.currentTime+.02, gap=.035;
+  burst(c.currentTime,{dur:.9,decay:.5,type:'lowpass',freq:500,vol:.12});
+  for(let i=0;i<12;i++){ metalClick(t,.55+Math.random()*.2,.9+Math.random()*.2); t+=gap; gap*=1.15; }
+}
+/* hammer cocking: light catch, then the heavy full-cock click */
+function playHammer(){
+  const t=ctx().currentTime;
+  metalClick(t,.8,.8); metalClick(t+.13,1,.7); thump(t+.13,180,90,.35,.06);
+}
+/* empty chamber: hammer falls on nothing */
+function playClick(){
+  const t=ctx().currentTime;
+  metalClick(t,1.2,1); thump(t,220,110,.3,.05);
+  burst(t,{dur:.2,decay:.05,freq:1800,q:2,vol:.15,wet:.4});
+}
+/* live round: sharp crack, blast body, low thump, room tail, shell drop */
+function playBoom(){
+  const t=ctx().currentTime;
+  burst(t,{dur:.06,decay:.012,type:'highpass',freq:1500,vol:1.6,wet:.9});
+  burst(t,{dur:.5,decay:.12,type:'lowpass',freq:2200,f2:150,vol:1.3,wet:.7});
+  thump(t,160,35,1.4,.35);
+  burst(t+.08,{dur:.9,decay:.35,type:'lowpass',freq:700,f2:100,vol:.25,wet:1});
+  ping(t+.45,4200,.08,.12,'triangle'); ping(t+.52,3300,.05,.1,'triangle');
+}
+/* cash out: handful of coins */
+function playCash(){
+  const c=ctx(); let t=c.currentTime;
+  for(let i=0;i<9;i++){
+    const f=[2637,3136,3951,4699][i%4]*(1+Math.random()*.03);
+    ping(t,f,.12,.28,'triangle'); ping(t,f*1.5,.05,.18);
+    burst(t,{dur:.02,decay:.005,freq:6000,q:3,vol:.25});
+    t+=.05+Math.random()*.05;
+  }
+}
+
+/* state */
+const qs = new URLSearchParams(location.search);
+const user = {
+  id: tg?.initDataUnsafe?.user?.id || (qs.get('user_id') ? parseInt(qs.get('user_id')) : 6056618592),
+  name: tg?.initDataUnsafe?.user?.first_name || (qs.get('user_name') ? decodeURIComponent(qs.get('user_name')) : 'Player')
+};
+let round=1, currentPot=0, isSpinning=false, userPoints=200, rotationDeg=0;
+const roundPots={1:50,2:120,3:220,4:380,5:600,6:1000};
+const $=id=>document.getElementById(id);
+const el={avatar:$('playerAvatar'),name:$('playerName'),rank:$('playerRank'),bal:$('playerBalance'),badge:$('roundBadge'),pot:$('potValue'),
+  status:$('statusBanner'),fire:$('btnFire'),fireText:$('btnFireText'),fireSub:$('btnFireSub'),cash:$('btnCashout'),cashText:$('btnCashoutText'),
+  rev:$('revolverSvg'),arena:$('arenaCard'),modal:$('outcomeModal'),mTitle:$('modalTitle'),mDesc:$('modalDesc'),mDelta:$('modalPtsDelta'),
+  mBtn:$('modalBtn'),notice:$('subNotice'),ladder:$('ladder')};
+el.name.textContent=user.name; el.avatar.textContent=user.name.charAt(0).toUpperCase();
+
+$('flutes').innerHTML=[0,1,2,3,4,5].map(i=>{const a=(i*60+30)*Math.PI/180;
+  return `<circle cx="${100+Math.sin(a)*72}" cy="${100-Math.cos(a)*72}" r="5"/>`}).join('');
+el.ladder.innerHTML=Object.keys(roundPots).map(r=>`<div class="rung" data-r="${r}"><span>R${r}</span><b>${roundPots[r]}</b></div>`).join('');
+
+function setStatus(html,cls=''){ el.status.className='status '+cls; el.status.innerHTML=html; }
+function setBalance(v){ userPoints=v; el.bal.textContent=v; }
+
+async function loadPlayerData(){
+  try{
+    const r=await fetch(`/api/player?user_id=${user.id}&user_name=${encodeURIComponent(user.name)}`);
+    if(r.ok){ const d=await r.json(); setBalance(d.points); el.rank.textContent=`Rank #${d.rank||1}  |  Streak ${d.streak||0}`; }
+  }catch(e){ console.error('Player load error:',e); }
+}
+loadPlayerData();
+
+function updateUI(){
+  el.badge.textContent=`Round ${round} of 6`;
+  el.pot.innerHTML=`${currentPot||roundPots[round]||50}<i>pts</i>`;
+  el.pot.classList.remove('bump'); void el.pot.offsetWidth; el.pot.classList.add('bump');
+  el.fireText.textContent = currentPot===0 ? 'Pull trigger' : 'Risk it';
+  el.fireSub.textContent = `+${roundPots[round]} pts`;
+  el.ladder.querySelectorAll('.rung').forEach(r=>{ const n=+r.dataset.r; r.className='rung'+(n<round?' done':'')+(n===round?' now':''); });
+  if(currentPot>0){ el.cash.style.display='grid'; el.cashText.textContent=`+${currentPot} pts`; } else el.cash.style.display='none';
+}
+updateUI();
+
+function resetSlots(){ for(let i=1;i<=6;i++){ const s=$('slot'+i); s.setAttribute('fill','#0c0b0a'); s.setAttribute('stroke','#6b665c'); } }
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const haptic=(k,t)=>{ try{ tg?.HapticFeedback?.[k](t); }catch(e){} };
+function showModal(title,desc,delta,color){
+  el.mTitle.textContent=title; el.mDesc.textContent=desc; el.mDelta.textContent=delta; el.mDelta.style.color=color; el.modal.classList.add('show');
+}
+
+el.fire.addEventListener('click',async()=>{
+  if(isSpinning) return;
+  if(userPoints<150 && currentPot===0){
+    el.notice.classList.add('warn');
+    el.notice.textContent='You need at least 150 pts to play. Claim yours with /daily first.';
+    return;
+  }
+  el.notice.classList.remove('warn');
+  el.notice.textContent='If the live round fires, you lose 150 pts from your wallet.';
+  isSpinning=true; el.fire.classList.add('off'); el.cash.classList.add('off');
+
+  setStatus('<b>Spinning the cylinder...</b>'); playSpin(); haptic('impactOccurred','medium');
+  rotationDeg += 720 + Math.floor(Math.random()*6)*60;
+  el.rev.style.transform=`rotate(${rotationDeg}deg)`;
+  await wait(900);
+  setStatus('<b>Hammer back.</b> Steady now...'); playHammer(); haptic('impactOccurred','heavy');
+  await wait(900);
+
+  try{
+    const res=await fetch('/api/spin',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:user.id,user_name:user.name,round:round,current_pot:currentPot})});
+    const data=await res.json();
+
+    if(data.status==='dead'){
+      playBoom(); haptic('notificationOccurred','error');
+      el.arena.classList.add('shake'); setTimeout(()=>el.arena.classList.remove('shake'),600);
+      const hit=$('slot'+data.chamber); if(hit){ hit.setAttribute('fill','#b63a26'); hit.setAttribute('stroke','#f0b4a6'); }
+      setStatus(`<b>Bang.</b> Chamber ${data.chamber} was loaded.`,'bad');
+      setBalance(data.new_points);
+      setTimeout(()=>showModal('Khel khatam',data.roast||'Goli lag gayi! Round ke points gaye aur wallet se 150 pts kat gaye.','-150','#9c2f1e'),1000);
+    }else if(data.status==='jackpot'){
+      playCash(); haptic('notificationOccurred','success'); setBalance(data.new_points);
+      showModal('Legend of the West','Lagatar 6 rounds survive kar liye. Jackpot tumhara.',`+${data.jackpot}`,'#4f6b3a');
+    }else{
+      playClick(); haptic('notificationOccurred','success');
+      const ok=$('slot'+data.chamber); if(ok){ ok.setAttribute('fill','#c08a2e'); ok.setAttribute('stroke','#f0d38a'); }
+      currentPot=data.current_pot; round=data.next_round;
+      setStatus(`<b>Click.</b> Chamber ${data.chamber} was empty. Round ${round-1} cleared.`,'good');
+      updateUI(); el.fire.classList.remove('off'); el.cash.classList.remove('off'); isSpinning=false;
     }
+  }catch(e){
+    console.error('Spin error:',e);
+    setStatus('Connection lost. Check your network and try again.','bad');
+    el.fire.classList.remove('off'); el.cash.classList.remove('off'); isSpinning=false;
+  }
+});
 
-    // Sound Synthesizer via Web Audio API (Native, Zero External Assets)
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    let audioCtx = null;
+el.cash.addEventListener('click',async()=>{
+  if(isSpinning||currentPot===0) return;
+  isSpinning=true; el.fire.classList.add('off'); el.cash.classList.add('off');
+  try{
+    const res=await fetch('/api/cashout',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:user.id,user_name:user.name,pot:currentPot})});
+    const data=await res.json();
+    playCash(); haptic('notificationOccurred','success'); setBalance(data.new_points);
+    showModal('Cashed out',`Samajhdari dikhai aur +${currentPot} pts leke nikal gaye. Streak: ${data.streak}`,`+${currentPot}`,'#4f6b3a');
+  }catch(e){
+    console.error('Cashout error:',e);
+    setStatus('Cash out failed. Try again.','bad');
+    el.fire.classList.remove('off'); el.cash.classList.remove('off'); isSpinning=false;
+  }
+});
 
-    function getAudioContext() {
-      if (!audioCtx) audioCtx = new AudioCtx();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      return audioCtx;
-    }
-
-    function playSpinSound() {
-      const ctx = getAudioContext();
-      for (let i = 0; i < 8; i++) {
-        setTimeout(() => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(400 + Math.random() * 300, ctx.currentTime);
-          gain.gain.setValueAtTime(0.15, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.05);
-        }, i * 90);
-      }
-    }
-
-    function playHammerSound() {
-      const ctx = getAudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(180, ctx.currentTime);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.08);
-    }
-
-    function playClickSound() {
-      const ctx = getAudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1200, ctx.currentTime);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.06);
-    }
-
-    function playBoomSound() {
-      const ctx = getAudioContext();
-      const bufferSize = ctx.sampleRate * 0.8;
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.18));
-      }
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(600, ctx.currentTime);
-      filter.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.8);
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(1.0, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
-      noise.start();
-
-      const osc = ctx.createOscillator();
-      const oscGain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(120, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.5);
-      oscGain.gain.setValueAtTime(0.8, ctx.currentTime);
-      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-      osc.connect(oscGain);
-      oscGain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.5);
-    }
-
-    function playCashoutSound() {
-      const ctx = getAudioContext();
-      const notes = [523.25, 659.25, 783.99, 1046.50];
-      notes.forEach((freq, idx) => {
-        setTimeout(() => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, ctx.currentTime);
-          gain.gain.setValueAtTime(0.2, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.35);
-        }, idx * 80);
-      });
-    }
-
-    // Game State
-    const urlParams = new URLSearchParams(window.location.search);
-    const paramId = urlParams.get('user_id');
-    const paramName = urlParams.get('user_name');
-
-    let user = {
-      id: tg?.initDataUnsafe?.user?.id || (paramId ? parseInt(paramId) : 6056618592),
-      name: tg?.initDataUnsafe?.user?.first_name || (paramName ? decodeURIComponent(paramName) : "Player")
-    };
-
-    let round = 1;
-    let currentPot = 0;
-    let isSpinning = false;
-    let userPoints = 200;
-    let rotationDeg = 0;
-
-    const roundPots = {
-      1: 50,
-      2: 120,
-      3: 220,
-      4: 380,
-      5: 600,
-      6: 1000
-    };
-
-    // UI Elements
-    const playerAvatar = document.getElementById("playerAvatar");
-    const playerName = document.getElementById("playerName");
-    const playerRank = document.getElementById("playerRank");
-    const playerBalance = document.getElementById("playerBalance");
-    const roundBadge = document.getElementById("roundBadge");
-    const potValue = document.getElementById("potValue");
-    const statusBanner = document.getElementById("statusBanner");
-    const btnFire = document.getElementById("btnFire");
-    const btnFireText = document.getElementById("btnFireText");
-    const btnCashout = document.getElementById("btnCashout");
-    const btnCashoutText = document.getElementById("btnCashoutText");
-    const revolverSvg = document.getElementById("revolverSvg");
-    const arenaCard = document.getElementById("arenaCard");
-    const outcomeModal = document.getElementById("outcomeModal");
-    const modalIcon = document.getElementById("modalIcon");
-    const modalTitle = document.getElementById("modalTitle");
-    const modalDesc = document.getElementById("modalDesc");
-    const modalPtsDelta = document.getElementById("modalPtsDelta");
-    const modalBtn = document.getElementById("modalBtn");
-
-    playerName.textContent = user.name;
-    playerAvatar.textContent = user.name.charAt(0).toUpperCase();
-
-    async function loadPlayerData() {
-      try {
-        const res = await fetch(`/api/player?user_id=${user.id}&user_name=${encodeURIComponent(user.name)}`);
-        if (res.ok) {
-          const data = await res.json();
-          userPoints = data.points;
-          playerBalance.textContent = userPoints;
-          playerRank.textContent = `Rank #${data.rank || 1} • Streak: ${data.streak || 0}🔥`;
-        }
-      } catch (e) {
-        console.error("Player load error:", e);
-      }
-    }
-
-    loadPlayerData();
-
-    function updatePotUI() {
-      roundBadge.textContent = `ROUND ${round} of 6`;
-      const nextPot = roundPots[round] || 50;
-      potValue.innerHTML = `+${currentPot || nextPot} <span>PTS</span>`;
-      btnFireText.textContent = currentPot === 0 
-        ? `PULL TRIGGER (ROUND 1: +50 PTS)` 
-        : `RISK IT FOR +${roundPots[round]} PTS!`;
-
-      if (currentPot > 0) {
-        btnCashout.style.display = "flex";
-        btnCashoutText.textContent = `CASH OUT (+${currentPot} PTS)`;
-      } else {
-        btnCashout.style.display = "none";
-      }
-    }
-
-    updatePotUI();
-
-    function resetSlots() {
-      for (let i = 1; i <= 6; i++) {
-        const el = document.getElementById(`slot${i}`);
-        if (el) {
-          el.setAttribute("fill", "#0d1017");
-          el.setAttribute("stroke", "#4f596f");
-        }
-      }
-    }
-
-    btnFire.addEventListener("click", async () => {
-      if (isSpinning) return;
-      if (userPoints < 150 && currentPot === 0) {
-        alert("Abe gareeb! Jeb me 150 points nahi hain! /daily se claim karo pehle!");
-        return;
-      }
-
-      isSpinning = true;
-      btnFire.classList.add("btn-disabled");
-      btnCashout.classList.add("btn-disabled");
-
-      statusBanner.innerHTML = `🌀 <span class="status-highlight">Spinning cylinder...</span>`;
-      playSpinSound();
-      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-
-      const spinAngle = 720 + Math.floor(Math.random() * 6) * 60;
-      rotationDeg += spinAngle;
-      revolverSvg.style.transform = `rotate(${rotationDeg}deg)`;
-
-      await new Promise(r => setTimeout(r, 900));
-
-      statusBanner.innerHTML = `🎯 <span class="status-highlight">Hammer cocked... Aiming temple...</span> 😰`;
-      playHammerSound();
-      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
-
-      await new Promise(r => setTimeout(r, 900));
-
-      try {
-        const res = await fetch("/api/spin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: user.id,
-            user_name: user.name,
-            round: round,
-            current_pot: currentPot
-          })
-        });
-
-        const data = await res.json();
-
-        if (data.status === "dead") {
-          playBoomSound();
-          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
-          arenaCard.classList.add("shake");
-          setTimeout(() => arenaCard.classList.remove("shake"), 700);
-
-          const hitSlot = document.getElementById(`slot${data.chamber}`);
-          if (hitSlot) {
-            hitSlot.setAttribute("fill", "#ff1a47");
-            hitSlot.setAttribute("stroke", "#ff2a55");
-          }
-
-          statusBanner.innerHTML = `💥 <span style="color: #ff2a55; font-weight: 800;">BOOOOOOM!! Bullet fired from chamber ${data.chamber}/6!</span>`;
-          userPoints = data.new_points;
-          playerBalance.textContent = userPoints;
-
-          setTimeout(() => {
-            modalIcon.textContent = "💥";
-            modalTitle.textContent = "KHEL KHATAM!";
-            modalTitle.style.color = "#ff2a55";
-            modalDesc.textContent = data.roast || `Goli lag gayi! Game ke points barbaad aur wallet se -150 Points kat gaye.`;
-            modalPtsDelta.textContent = "-150 PTS";
-            modalPtsDelta.style.color = "#ff2a55";
-            outcomeModal.style.display = "flex";
-          }, 1000);
-
-        } else if (data.status === "jackpot") {
-          playCashoutSound();
-          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-          userPoints = data.new_points;
-          playerBalance.textContent = userPoints;
-
-          modalIcon.textContent = "👑";
-          modalTitle.textContent = "ULTIMATE LEGEND!";
-          modalTitle.style.color = "#ffb800";
-          modalDesc.textContent = `Lagatar 6 rounds survive kar liye! You won the ultimate jackpot!`;
-          modalPtsDelta.textContent = `+${data.jackpot} PTS`;
-          modalPtsDelta.style.color = "#00e676";
-          outcomeModal.style.display = "flex";
-
-        } else {
-          playClickSound();
-          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-
-          const safeSlot = document.getElementById(`slot${data.chamber}`);
-          if (safeSlot) {
-            safeSlot.setAttribute("fill", "#00e676");
-            safeSlot.setAttribute("stroke", "#00f2fe");
-          }
-
-          currentPot = data.current_pot;
-          round = data.next_round;
-          statusBanner.innerHTML = `💨 <span style="color: #00e676; font-weight: 800;">CLICK! Chamber ${data.chamber}/6 was empty!</span> Survived Round ${round - 1}!`;
-          updatePotUI();
-
-          btnFire.classList.remove("btn-disabled");
-          btnCashout.classList.remove("btn-disabled");
-          isSpinning = false;
-        }
-
-      } catch (e) {
-        console.error("Spin error:", e);
-        statusBanner.textContent = "Network error. Try again.";
-        btnFire.classList.remove("btn-disabled");
-        isSpinning = false;
-      }
-    });
-
-    btnCashout.addEventListener("click", async () => {
-      if (isSpinning || currentPot === 0) return;
-      isSpinning = true;
-      btnFire.classList.add("btn-disabled");
-      btnCashout.classList.add("btn-disabled");
-
-      try {
-        const res = await fetch("/api/cashout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: user.id,
-            user_name: user.name,
-            pot: currentPot
-          })
-        });
-
-        const data = await res.json();
-        playCashoutSound();
-        if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-
-        userPoints = data.new_points;
-        playerBalance.textContent = userPoints;
-
-        modalIcon.textContent = "💰";
-        modalTitle.textContent = "CASHED OUT & SAFE!";
-        modalTitle.style.color = "#ffb800";
-        modalDesc.textContent = `Samajhdari dikhai aur +${currentPot} points jeet ke nikal gaye! Current Streak: ${data.streak}🔥`;
-        modalPtsDelta.textContent = `+${currentPot} PTS`;
-        modalPtsDelta.style.color = "#00e676";
-        outcomeModal.style.display = "flex";
-
-      } catch (e) {
-        console.error("Cashout error:", e);
-        isSpinning = false;
-      }
-    });
-
-    modalBtn.addEventListener("click", () => {
-      outcomeModal.style.display = "none";
-      round = 1;
-      currentPot = 0;
-      isSpinning = false;
-      resetSlots();
-      updatePotUI();
-      btnFire.classList.remove("btn-disabled");
-      statusBanner.textContent = "Ready for a new game! Spin & pull trigger.";
-    });
-  </script>
+el.mBtn.addEventListener('click',()=>{
+  el.modal.classList.remove('show');
+  round=1; currentPot=0; isSpinning=false; resetSlots(); updateUI();
+  el.fire.classList.remove('off'); el.cash.classList.remove('off');
+  setStatus('New game. Spin the cylinder, then pull the trigger.');
+  loadPlayerData();
+});
+</script>
 </body>
 </html>
