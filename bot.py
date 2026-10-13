@@ -13,7 +13,8 @@ import json
 import sqlite3
 import logging
 import requests
-from telebot import TeleBot, apihelper
+from telebot import TeleBot, apihelper, types
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Prevent socket hangs on Windows
 apihelper.READ_TIMEOUT = 25
@@ -297,16 +298,35 @@ def save_chat_message(chat_id, user_name, text):
         logging.error(f"Error saving message: {e}")
 
 
-# ----------------- RUSSIAN ROULETTE GAME ENGINE -----------------
+# ----------------- RUSSIAN ROULETTE V2 ENGINE (PUSH-YOUR-LUCK) -----------------
+ROULETTE_ROUND_POTS = {
+    1: 50,
+    2: 120,
+    3: 220,
+    4: 380,
+    5: 600,
+    6: 1000
+}
+
 POOR_ROULETTE_QUOTES = [
-    "Abe gareeb, jeb me 100 points nahi hain aur chala hai maut se khelne. Go away poor kid!",
-    "Chillar party detected! Jeb me 100 points ka kaffan khareedne ke paise nahi hain, pehle chanda maango!",
+    "Abe gareeb, jeb me 150 points nahi hain aur chala hai maut se khelne. Go away poor kid!",
+    "Chillar party detected! Jeb me 150 points ka kaffan khareedne ke paise nahi hain, pehle chanda maango!",
     "Group walon, koi is bhikhari ko do-chaar chillar phenk ke maaro re, zero balance leke roulette khelne aagaya!",
     "Abe tu phone recharge karne ke paise bacha le pehle, roulette baad me khelna!",
-    "Bhai pehle katora leke group me bheek maang le, 100 points poore honge tab aana!",
+    "Bhai pehle katora leke group me bheek maang le, 150 points poore honge tab aana!",
     "Error 404: Points not found. Go away poor kid, dosto se udhaar leke aaja!",
-    "Zindagi me itna gareeb koi kaise ho sakta hai? 100 points kama ke aa pehle!"
+    "Zindagi me itna gareeb koi kaise ho sakta hai? 150 points kama ke aa pehle!"
 ]
+
+TIMEOUT_ROASTS = [
+    "Itna darpok hai tu ki decision lene me haath kaanp gaye? 30s timeout ho gaya, chal nikal!",
+    "Bhai ki pant geeli ho gayi trigger dekh ke! Light-hearted kid detected, game expired!",
+    "Abe itna darr lag raha tha toh roulette shuru hi kyun kiya tha? Time expired, chal nikal!",
+    "30 second mein darr ke maare phone chhod ke bhaag gaya! Game cancelled, zero points for coward!",
+    "Darr ke aage jeet hoti hai, par tu toh darr ke pehle hi behosh ho gaya! Timeout!"
+]
+
+ACTIVE_ROULETTE_GAMES = {}
 
 def get_or_create_roulette_player(user_id, user_name):
     try:
@@ -349,11 +369,37 @@ def get_roulette_leaderboard(caller_id=None):
             star = " 👑" if i == 0 else ""
             lines.append(f"{m} *{r[0]}*{star} — `{r[1]} pts` (Streak: {r[2]} 🔥)")
 
-        lines.append("\n🎮 _Play: Type `/roulette` (Win: +150 pts | Shot: -100 pts)_")
+        lines.append("\n🎮 _Play: Type `/roulette` (Push your luck! Cash out or risk it)_")
         lines.append("🎁 _Claim daily 100 pts: `/daily`_")
         return "\n".join(lines)
     except Exception as e:
         return f"Error loading leaderboard: {e}"
+
+def make_roulette_markup(session_id, current_pot, next_pot):
+    markup = InlineKeyboardMarkup()
+    btn_spin = InlineKeyboardButton(f"🔫 Fire Again (Risk it for +{next_pot} pts)", callback_data=f"rr_spin_{session_id}")
+    btn_leave = InlineKeyboardButton(f"💰 Cash Out (+{current_pot} pts)", callback_data=f"rr_leave_{session_id}")
+    markup.row(btn_spin)
+    markup.row(btn_leave)
+    return markup
+
+def expire_roulette_session(session_id, chat_id, message_id, user_name):
+    time.sleep(30)
+    session = ACTIVE_ROULETTE_GAMES.get(session_id)
+    if session and session.get("is_active"):
+        session["is_active"] = False
+        if session_id in ACTIVE_ROULETTE_GAMES:
+            del ACTIVE_ROULETTE_GAMES[session_id]
+        roast = random.choice(TIMEOUT_ROASTS)
+        timeout_text = (
+            f"⏱️ *30 Seconds Expired!* (Game Cancelled)\n\n"
+            f"_{roast}_\n\n"
+            f"🐔 *{user_name}* darr ke bhaag gaya! Iss game ke na koi points mile na kate."
+        )
+        try:
+            bot.edit_message_text(timeout_text, chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+        except Exception:
+            pass
 
 def get_recent_chat_history(chat_id, limit=CONTEXT_MESSAGE_LIMIT):
     """Thread-safe retrieval of recent messages."""
@@ -1056,8 +1102,8 @@ def handle_roulette_command(message):
 
     player = get_or_create_roulette_player(user_id, user_name)
 
-    # Check bankruptcy (needs at least 100 points)
-    if player["points"] < 100:
+    # Check bankruptcy (needs at least 150 points to risk)
+    if player["points"] < 150:
         quote = random.choice(POOR_ROULETTE_QUOTES)
         bot.reply_to(
             message,
@@ -1072,46 +1118,219 @@ def handle_roulette_command(message):
     try:
         msg = bot.reply_to(message, "🌀 *Spinning the cylinder...* 🔄", parse_mode="Markdown")
         time.sleep(1.2)
-        bot.edit_message_text(f"🔫 *Putting the gun to {user_name}'s temple...* 😰", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        bot.edit_message_text(f"🔫 *Putting the gun to {user_name}'s temple for Round 1...* 😰", chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
         time.sleep(1.2)
     except Exception:
         msg = message
 
-    # Chamber probability: 1 out of 6 is bullet
-    bullet = 6
+    # Chamber probability: random bullet chamber and random spin chamber
+    bullet = random.randint(1, 6)
     chamber = random.randint(1, 6)
 
+    if chamber == bullet:
+        # Shot on Round 1: lose 150 from total balance
+        new_pts = max(0, player["points"] - 150)
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
+        except Exception as e:
+            logging.error(f"DB update error: {e}")
+
+        res_text = (
+            f"💥 *BANG!!* Bullet fired from Chamber `{chamber}/6`!\n\n"
+            f"💀 *Khel Khatam! {user_name} Got Shot on Round 1!*\n"
+            f"💸 Total Balance se `-150 Points` kat gaye!\n"
+            f"💰 Naya Balance: `{new_pts} pts` ❌"
+        )
+        try:
+            bot.edit_message_text(res_text, chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
+        except Exception:
+            pass
+        return
+
+    # Survived Round 1!
+    current_pot = ROULETTE_ROUND_POTS[1]
+    next_pot = ROULETTE_ROUND_POTS[2]
+    session_id = f"{user_id}_{int(time.time()*1000)}"
+
+    ACTIVE_ROULETTE_GAMES[session_id] = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "round": 1,
+        "current_pot": current_pot,
+        "chat_id": chat_id,
+        "message_id": msg.message_id,
+        "is_active": True
+    }
+
+    res_text = (
+        f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
+        f"🎉 *{user_name} Survived Round 1!*\n"
+        f"💰 Current Pot: `+{current_pot} Points`\n\n"
+        f"Ab batao: Risk leke agle round me `+{next_pot} pts` ke liye fire karega ya `+{current_pot} pts` leke bhaagega?\n"
+        f"⏱️ _(30 seconds to decide!)_"
+    )
+    markup = make_roulette_markup(session_id, current_pot, next_pot)
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            c = conn.cursor()
-            if chamber != bullet:
-                # Survived (+150 pts)
-                new_pts = player["points"] + 150
-                new_streak = player["streak"] + 1
-                best_streak = max(player["best_streak"], new_streak)
-                c.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
-                conn.commit()
+        bot.edit_message_text(res_text, chat_id=chat_id, message_id=msg.message_id, reply_markup=markup, parse_mode="Markdown")
+    except Exception:
+        pass
 
-                res_text = (
-                    f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
-                    f"🎉 *{user_name} Zinda Bach Gaya!* `+150 Points`\n"
-                    f"💰 Balance: `{new_pts} pts` | Current Streak: `{new_streak}` 🔥"
-                )
-            else:
-                # Shot (-100 pts)
-                new_pts = max(0, player["points"] - 100)
-                c.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
-                conn.commit()
+    # Start 30s timer thread
+    threading.Thread(target=expire_roulette_session, args=(session_id, chat_id, msg.message_id, user_name), daemon=True).start()
 
-                res_text = (
-                    f"💥 *BANG!!* Bullet fired from Chamber `6/6`!\n\n"
-                    f"💀 *Khel Khatam! {user_name} Got Shot!* `-100 Points`\n"
-                    f"💰 Balance: `{new_pts} pts` | Streak Broken ❌"
-                )
+@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith('rr_'))
+def handle_roulette_callback(call):
+    parts = call.data.split("_", 2)
+    if len(parts) < 3:
+        return
+    action = parts[1]
+    session_id = parts[2]
 
-        bot.edit_message_text(res_text, chat_id=chat_id, message_id=msg.message_id, parse_mode="Markdown")
-    except Exception as e:
-        logging.error(f"Error in roulette gameplay: {e}")
+    session = ACTIVE_ROULETTE_GAMES.get(session_id)
+    if not session or not session.get("is_active"):
+        bot.answer_callback_query(call.id, "Game expire ho chuka hai bhai ya finish ho gaya!", show_alert=True)
+        return
+
+    # Strictly only the player can press the buttons
+    if call.from_user.id != session["user_id"]:
+        bot.answer_callback_query(call.id, "Abe ye tumhara game nahi hai! Apna /roulette shuru karo.", show_alert=True)
+        return
+
+    # Inactivate to prevent race condition double clicks
+    session["is_active"] = False
+    if session_id in ACTIVE_ROULETTE_GAMES:
+        del ACTIVE_ROULETTE_GAMES[session_id]
+
+    chat_id = session["chat_id"]
+    message_id = session["message_id"]
+    user_id = session["user_id"]
+    user_name = session["user_name"]
+    current_pot = session["current_pot"]
+    current_round = session["round"]
+
+    # 1. CASH OUT ACTION
+    if action == "leave":
+        bot.answer_callback_query(call.id, f"Cashed out +{current_pot} pts!")
+        player = get_or_create_roulette_player(user_id, user_name)
+        new_pts = player["points"] + current_pot
+        new_streak = player["streak"] + 1
+        best_streak = max(player["best_streak"], new_streak)
+
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
+        except Exception as e:
+            logging.error(f"DB update error: {e}")
+
+        cashout_text = (
+            f"💰 *CASHED OUT & SURVIVED!*\n\n"
+            f"🎉 *{user_name}* ne samajhdari dikhai aur `+{current_pot} Points` jeet ke nikal gaya!\n"
+            f"💰 Naya Balance: `{new_pts} pts` | Current Streak: `{new_streak}` 🔥"
+        )
+        try:
+            bot.edit_message_text(cashout_text, chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+        except Exception:
+            pass
+        return
+
+    # 2. FIRE AGAIN ACTION
+    if action == "spin":
+        next_round = current_round + 1
+        bot.answer_callback_query(call.id, f"Spinning for Round {next_round}!")
+
+        # Animation
+        try:
+            bot.edit_message_text("🌀 *Spinning the cylinder again...* 🔄", chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+            time.sleep(1.2)
+            bot.edit_message_text(f"🔫 *Putting the gun to {user_name}'s temple for Round {next_round}...* 😰", chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+            time.sleep(1.2)
+        except Exception:
+            pass
+
+        # Random bullet and chamber
+        bullet = random.randint(1, 6)
+        chamber = random.randint(1, 6)
+
+        if chamber == bullet:
+            # SHOT FIRED! Lost all session pot + extra 150 points deducted from wallet
+            player = get_or_create_roulette_player(user_id, user_name)
+            new_pts = max(0, player["points"] - 150)
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
+            except Exception as e:
+                logging.error(f"DB update error: {e}")
+
+            death_text = (
+                f"💥 *BANG!!* Bullet fired from Chamber `{chamber}/6`!\n\n"
+                f"💀 *Khel Khatam! {user_name} Got Shot in Round {next_round}!*\n"
+                f"💸 Iss game ke saare `+{current_pot} pts` paani me gaye!\n"
+                f"⚠️ Aur total wallet se extra `-150 Points` kat gaye!\n"
+                f"💰 Naya Balance: `{new_pts} pts` | Streak Broken ❌"
+            )
+            try:
+                bot.edit_message_text(death_text, chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+            except Exception:
+                pass
+            return
+
+        # SURVIVED NEXT ROUND!
+        new_pot = ROULETTE_ROUND_POTS.get(next_round, current_pot + 250)
+
+        # If beat final Round 6: JACKPOT!
+        if next_round >= 6:
+            player = get_or_create_roulette_player(user_id, user_name)
+            jackpot_pts = player["points"] + new_pot
+            new_streak = player["streak"] + 5
+            best_streak = max(player["best_streak"], new_streak)
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (jackpot_pts, new_streak, best_streak, user_id))
+            except Exception as e:
+                logging.error(f"DB update error: {e}")
+
+            jackpot_text = (
+                f"👑 *ULTIMATE LEGEND! JACKPOT WON!*\n\n"
+                f"🔥 *{user_name}* ne lagatar 6 ke 6 rounds survive kar liye!\n"
+                f"🏆 Jackpot Reward: `+{new_pot} Points`!\n"
+                f"💰 Naya Balance: `{jackpot_pts} pts` | Streak: `{new_streak}` 🔥"
+            )
+            try:
+                bot.edit_message_text(jackpot_text, chat_id=chat_id, message_id=message_id, parse_mode="Markdown")
+            except Exception:
+                pass
+            return
+
+        # Advance session to next round
+        next_session_id = f"{user_id}_{int(time.time()*1000)}"
+        future_pot = ROULETTE_ROUND_POTS.get(next_round + 1, new_pot + 250)
+
+        ACTIVE_ROULETTE_GAMES[next_session_id] = {
+            "user_id": user_id,
+            "user_name": user_name,
+            "round": next_round,
+            "current_pot": new_pot,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "is_active": True
+        }
+
+        res_text = (
+            f"💨 *CLICK...* Chamber `{chamber}/6` was EMPTY!\n\n"
+            f"🔥 *{user_name} Survived Round {next_round}!*\n"
+            f"💰 Current Pot: `+{new_pot} Points`\n\n"
+            f"Kismat chamak rahi hai! Agle round me `+{future_pot} pts` ke liye risk lega ya `+{new_pot} pts` leke nikalna hai?\n"
+            f"⏱️ _(30 seconds to decide!)_"
+        )
+        markup = make_roulette_markup(next_session_id, new_pot, future_pot)
+        try:
+            bot.edit_message_text(res_text, chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="Markdown")
+        except Exception:
+            pass
+
+        # Start new 30s timer thread
+        threading.Thread(target=expire_roulette_session, args=(next_session_id, chat_id, message_id, user_name), daemon=True).start()
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:stats|leaderboard|top)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_roulette_stats(message):
