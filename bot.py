@@ -291,11 +291,11 @@ def is_explicit_file_request(text, reply_to_text=None):
     return False
 
 
-def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
+def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[], force_search=False):
     """
     Precision Search Engine:
     - Only searches when explicit file/ROM request is detected"""
-    if not is_explicit_file_request(query_text, reply_to_text=reply_to_text):
+    if not force_search and not is_explicit_file_request(query_text, reply_to_text=reply_to_text):
         return [], None
     """
     - Typo & slang tolerant (e.g. pbp -> pbrp, ofox -> orangefox)
@@ -322,7 +322,7 @@ def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
         if any(b in r_low for b in KNOWN_BRANDS + FILE_KEYWORDS) or ".zip" in r_low or ".img" in r_low:
             is_reply_to_file = True
 
-    if not has_brand and not has_file_kw and not is_reply_to_file:
+    if not force_search and not has_brand and not has_file_kw and not is_reply_to_file:
         return [], None
 
 
@@ -442,6 +442,14 @@ def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[]):
         caption = item.get("caption", "").lower()
         combined = f"{name} {caption}"
         score = 0
+
+        # Keyword matching for /give commands
+        q_words = [w for w in clean_q.split() if len(w) > 2 and w not in ["give", "file", "download", "link"]]
+        for qw in q_words:
+            if qw in name:
+                score += 30
+            elif qw in caption:
+                score += 15
 
         if want_vanilla:
             if "vanilla" in combined:
@@ -825,6 +833,87 @@ def handle_channel_post(message):
         except Exception as e:
             logging.error(f"Error updating database: {e}")
 
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:give)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_give_command(message):
+    """
+    STRICT COMMAND DISPATCH: Files/ROMs are ONLY delivered when user explicitly issues /give command.
+    Examples:
+    /give axion
+    /give pixelos
+    /give kernel
+    /give (in reply to a message)
+    """
+    chat_id = message.chat.id
+    user_name = message.from_user.first_name or "Friend"
+    text = (message.text or "").strip()
+
+    save_chat_message(chat_id, user_name, text)
+    bot.send_chat_action(chat_id, "upload_document")
+
+    # Extract query after /give or /give@bot_username
+    query = re.sub(r'^[/\.!](?:give)(?:@\w+)?\s*', '', text, flags=re.IGNORECASE).strip()
+
+    reply_to_text = None
+    if message.reply_to_message:
+        reply_to_text = message.reply_to_message.caption or message.reply_to_message.text or ""
+
+    recent_history = get_recent_chat_history(chat_id, limit=4)
+    history_texts = [m[1] for m in recent_history if m[1] != text]
+
+    # If neither query nor reply_to_text exists
+    if not query and not reply_to_text:
+        bot.reply_to(
+            message,
+            "📦 *Kaunsi ROM ya file chahiye bhai?*\n\n"
+            "Usage:\n"
+            "• `/give axion`\n"
+            "• `/give pixelos`\n"
+            "• `/give kernel`\n"
+            "• `/give recovery`\n\n"
+            "Ya kisi message pe reply karke `/give` likho!",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Perform search
+    search_query = query if query else (reply_to_text or "")
+    matches, version_note = search_roms_or_kernels(
+        search_query,
+        reply_to_text=reply_to_text,
+        history_texts=history_texts,
+        force_search=True
+    )
+
+    if matches:
+        best = matches[0]
+        cap = best.get('caption', '').strip()
+        details = f"\n_{cap}_" if cap else ""
+        prefix = f"{version_note}\n\n" if version_note else ""
+        reply_msg = f"{prefix}📦 *{best['name']}*{details}\n🔗 [Download Post in Channel]({best['link']})"
+
+        try:
+            bot.reply_to(message, reply_msg, parse_mode="Markdown")
+        except Exception:
+            bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
+
+        try:
+            bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=f"@{CHANNEL_USERNAME}",
+                message_id=best['message_id']
+            )
+            logging.info(f"⚡ Successfully delivered file #{best['message_id']} via /give command to {user_name}!")
+        except Exception as copy_err:
+            logging.info(f"Could not copy directly ({copy_err}), link delivered.")
+    else:
+        term = query or "is topic"
+        bot.reply_to(
+            message,
+            f"❌ *'{term}' ke liye koi matching file nahi mili.*\n"
+            "Thoda specific naam likh ke try kar, jaise: `/give axion` ya `/give pixelos`",
+            parse_mode="Markdown"
+        )
+
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
     chat_id = message.chat.id
@@ -848,33 +937,6 @@ def handle_group_message(message):
         # Fetch recent chat context for follow-up detection
         recent_history = get_recent_chat_history(chat_id, limit=4)
         history_texts = [m[1] for m in recent_history if m[1] != text]
-
-        # 3. STRICT FILE DISPATCH: Only search & deliver files if explicitly asked for a file/ROM/kernel
-        if is_explicit_file_request(text, reply_to_text=reply_to_text):
-            matches, version_note = search_roms_or_kernels(text, reply_to_text=reply_to_text, history_texts=history_texts)
-            if matches:
-                best = matches[0]
-                cap = best.get('caption', '').strip()
-                details = f"\n_{cap}_" if cap else ""
-                prefix = f"{version_note}\n\n" if version_note else ""
-                reply_msg = f"{prefix}📦 *{best['name']}*{details}\n🔗 [Download Post in Channel]({best['link']})"
-
-                try:
-                    bot.reply_to(message, reply_msg, parse_mode="Markdown")
-                except Exception:
-                    bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
-
-                # Copy actual file from channel into group!
-                try:
-                    bot.copy_message(
-                        chat_id=chat_id,
-                        from_chat_id=f"@{CHANNEL_USERNAME}",
-                        message_id=best['message_id']
-                    )
-                    logging.info(f"⚡ Successfully copied post #{best['message_id']} into group!")
-                except Exception as copy_err:
-                    logging.info(f"Could not copy directly ({copy_err}), link delivered.")
-                return
 
         # CONVERSATIONAL BANTER / ROASTING (CONTEXTUAL, DRY SARCASM & NO FAKE OBJECTS)
         clean_text = sanitize_for_ai(text)
