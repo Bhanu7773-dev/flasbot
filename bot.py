@@ -6,6 +6,7 @@ except Exception:
     pass
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.parse
 import time
 import os
 import re
@@ -224,16 +225,160 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
 http_session = requests.Session()
 
-# ---------------- KEEP-ALIVE HEALTH SERVER (FOR RENDER 24/7) ----------------
+# ---------------- KEEP-ALIVE HEALTH SERVER & TELEGRAM MINI-APP BACKEND ----------------
+MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roulette_miniapp.html")
+
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path in ["/roulette", "/game", "/miniapp"]:
+            if os.path.exists(MINIAPP_HTML_PATH):
+                with open(MINIAPP_HTML_PATH, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(html_content.encode("utf-8"))
+            else:
+                self.send_error(404, "Mini App HTML not found")
+            return
+
+        if path == "/api/player":
+            qs = urllib.parse.parse_qs(parsed.query)
+            try:
+                user_id = int(qs.get("user_id", [6056618592])[0])
+            except Exception:
+                user_id = 6056618592
+            user_name = qs.get("user_name", ["Player"])[0]
+
+            player = get_or_create_roulette_player(user_id, user_name)
+            rank = 1
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    c = conn.cursor()
+                    c.execute("SELECT COUNT(*) + 1 FROM roulette_scores WHERE points > ?", (player["points"],))
+                    rank = c.fetchone()[0]
+            except Exception:
+                pass
+            player["rank"] = rank
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(player).encode("utf-8"))
+            return
+
+        # Default root health check
         self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"Flash Bot is ONLINE 24/7! Status: 100% HEALTHY.")
 
+    def do_POST(self):
+        content_len = int(self.headers.get("Content-Length", 0))
+        post_body = self.rfile.read(content_len) if content_len > 0 else b"{}"
+        try:
+            body = json.loads(post_body.decode("utf-8"))
+        except Exception:
+            body = {}
+
+        path = urllib.parse.urlparse(self.path).path
+
+        if path == "/api/spin":
+            user_id = int(body.get("user_id", 0))
+            user_name = clean_player_name(body.get("user_name", "Player"))
+            current_round = int(body.get("round", 1))
+            current_pot = int(body.get("current_pot", 0))
+
+            player = get_or_create_roulette_player(user_id, user_name)
+
+            bullet = random.randint(1, 6)
+            chamber = random.randint(1, 6)
+
+            if chamber == bullet:
+                # Shot!
+                new_pts = max(0, player["points"] - 150)
+                try:
+                    with sqlite3.connect(DB_PATH) as conn:
+                        conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
+                except Exception as e:
+                    logging.error(f"DB update error: {e}")
+                schedule_cloud_sync()
+
+                resp = {
+                    "status": "dead",
+                    "bullet": bullet,
+                    "chamber": chamber,
+                    "new_points": new_pts,
+                    "roast": random.choice(POOR_ROULETTE_QUOTES)
+                }
+            else:
+                # Survived
+                next_pot = ROULETTE_ROUND_POTS.get(current_round, current_pot + 250)
+                if current_round >= 6:
+                    jackpot_pts = player["points"] + next_pot
+                    try:
+                        with sqlite3.connect(DB_PATH) as conn:
+                            conn.execute("UPDATE roulette_scores SET points = ?, streak = streak + 5, wins = wins + 1 WHERE user_id = ?", (jackpot_pts, user_id))
+                    except Exception as e:
+                        logging.error(f"DB update error: {e}")
+                    schedule_cloud_sync()
+
+                    resp = {
+                        "status": "jackpot",
+                        "bullet": bullet,
+                        "chamber": chamber,
+                        "jackpot": next_pot,
+                        "new_points": jackpot_pts
+                    }
+                else:
+                    resp = {
+                        "status": "survived",
+                        "bullet": bullet,
+                        "chamber": chamber,
+                        "current_pot": next_pot,
+                        "next_round": current_round + 1
+                    }
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode("utf-8"))
+            return
+
+        if path == "/api/cashout":
+            user_id = int(body.get("user_id", 0))
+            user_name = clean_player_name(body.get("user_name", "Player"))
+            pot = int(body.get("pot", 0))
+
+            player = get_or_create_roulette_player(user_id, user_name)
+            new_pts = player["points"] + pot
+            new_streak = player["streak"] + 1
+            best_streak = max(player["best_streak"], new_streak)
+
+            try:
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
+            except Exception as e:
+                logging.error(f"DB update error: {e}")
+            schedule_cloud_sync()
+
+            resp = {
+                "status": "cashed_out",
+                "new_points": new_pts,
+                "streak": new_streak
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(resp).encode("utf-8"))
+            return
+
+        self.send_error(404, "Not Found")
+
     def log_message(self, format, *args):
-        # Silence HTTP access logs
         return
 
 def run_health_server():
@@ -1266,103 +1411,27 @@ def handle_roulette_command(message):
         )
         return
 
-    # ANTI-FLOOD: Cancel and remove any previous uncompleted game message by this user
-    for s_id, s_data in list(ACTIVE_ROULETTE_GAMES.items()):
-        if s_data.get("user_id") == user_id and s_data.get("is_active"):
-            s_data["is_active"] = False
-            try:
-                bot.delete_message(s_data["chat_id"], s_data["message_id"])
-            except Exception:
-                pass
-            ACTIVE_ROULETTE_GAMES.pop(s_id, None)
+    # Render external WebApp URL
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette"
 
-    # FRAME 1: Spinning Cylinder Animation
-    try:
-        f1_text = (
-            "╔══════════════════════════╗\n"
-            "║   🎰 RUSSIAN ROULETTE    ║\n"
-            "╚══════════════════════════╝\n\n"
-            "⚙️ *SPINNING CYLINDER...*\n"
-            "`[ 🔄 | ⚪ | ⚪ | ⚪ | ⚪ | ⚪ ]`\n"
-            "_whirrrrr... clack-clack-clack..._"
-        )
-        msg = bot.reply_to(message, f1_text, parse_mode="Markdown")
-        time.sleep(0.9)
-    except Exception:
-        msg = message
+    markup = InlineKeyboardMarkup()
+    btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
+    markup.add(btn_webapp)
 
-    # Chamber probability: random bullet chamber and random spin chamber (independent every single game)
-    bullet = random.randint(1, 6)
-    chamber = random.randint(1, 6)
-
-    # FRAME 2: Hammer Cocked & Aiming at Temple
-    f2_text = (
-        "╔══════════════════════════╗\n"
-        "║   🎰 RUSSIAN ROULETTE    ║\n"
-        "╚══════════════════════════╝\n\n"
-        f"🎯 *HAMMER COCKED ON CHAMBER {chamber}/6...*\n"
-        f"`{render_cylinder(chamber, None)}`\n"
-        f"🔫 _Bandook {safe_name} ki kanpati pe rakh di..._\n"
-        f"*Ungli trigger pe dab rahi hai...* 😰"
+    intro_text = (
+        f"🎰 *FLASH RUSSIAN ROULETTE (MINI-APP)* 🔫\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Player:* {safe_name}\n"
+        f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
+        f"🎯 *Mini-App Highlights:*\n"
+        f"• 🔄 Interactive Rotating Cylinder Animation\n"
+        f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
+        f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
+        f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
+        f"👇 *Neeche button tap karke Telegram Mini-App launch karo:*"
     )
-    update_roulette_msg(chat_id, msg.message_id, f2_text)
-    time.sleep(1.0)
-
-    # FRAME 3: The Reveal
-    if chamber == bullet:
-        # Shot on Round 1: lose 150 from total balance, clear game
-        new_pts = max(0, player["points"] - 150)
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
-        except Exception as e:
-            logging.error(f"DB update error: {e}")
-        schedule_cloud_sync()
-
-        res_text = (
-            "╔══════════════════════════╗\n"
-            "║   💥 B O O O O M ! ! 💥  ║\n"
-            "╚══════════════════════════╝\n\n"
-            f"🔴 *LIVE BULLET FIRED FROM CHAMBER {chamber}/6!*\n"
-            f"`{render_cylinder(chamber, True)}`\n\n"
-            f"💀 *KHEL KHATAM! {safe_name} Got Shot on Round 1!*\n"
-            f"💸 Total Balance se `-150 Points` kat gaye!\n"
-            f"💰 Naya Balance: `{new_pts} pts` ❌"
-        )
-        update_roulette_msg(chat_id, msg.message_id, res_text, reply_markup=None)
-        return
-
-    # Survived Round 1!
-    current_pot = ROULETTE_ROUND_POTS[1]
-    next_pot = ROULETTE_ROUND_POTS[2]
-    session_id = f"{user_id}_{int(time.time()*1000)}"
-
-    ACTIVE_ROULETTE_GAMES[session_id] = {
-        "user_id": user_id,
-        "user_name": safe_name,
-        "round": 1,
-        "current_pot": current_pot,
-        "chat_id": chat_id,
-        "message_id": msg.message_id,
-        "is_active": True
-    }
-
-    res_text = (
-        "╔══════════════════════════╗\n"
-        "║    💨 *C L I C K...*     ║\n"
-        "╚══════════════════════════╝\n\n"
-        f"💨 *CHAMBER {chamber}/6 WAS EMPTY!*\n"
-        f"`{render_cylinder(chamber, False)}`\n\n"
-        f"🎉 *{safe_name} SURVIVED ROUND 1!*\n"
-        f"💰 Current Pot: `+{current_pot} Points`\n\n"
-        f"Ab batao: Risk leke agle round me `+{next_pot} pts` ke liye fire karega ya `+{current_pot} pts` leke bhaagega?\n"
-        f"⏱️ _(30 seconds to decide!)_"
-    )
-    markup = make_roulette_markup(session_id, current_pot, next_pot)
-    update_roulette_msg(chat_id, msg.message_id, res_text, reply_markup=markup)
-
-    # Start 30s timer thread
-    threading.Thread(target=expire_roulette_session, args=(session_id, chat_id, msg.message_id, safe_name), daemon=True).start()
+    bot.reply_to(message, intro_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data and call.data.startswith('rr_'))
 def handle_roulette_callback(call):

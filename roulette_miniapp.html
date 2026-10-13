@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Flash Russian Roulette</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0c10;
+      --card-bg: rgba(18, 22, 31, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --red-neon: #ff2a55;
+      --red-glow: rgba(255, 42, 85, 0.4);
+      --gold: #ffb800;
+      --gold-glow: rgba(255, 184, 0, 0.35);
+      --cyan: #00f2fe;
+      --green: #00e676;
+      --text-main: #f0f3f8;
+      --text-muted: #8b94a5;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 50% 15%, rgba(255, 42, 85, 0.12) 0%, transparent 60%),
+        radial-gradient(circle at 50% 85%, rgba(0, 242, 254, 0.06) 0%, transparent 60%);
+      color: var(--text-main);
+      font-family: 'Outfit', -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    /* Screen shake on death */
+    @keyframes screenShake {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      10%, 30%, 50%, 70%, 90% { transform: translate(-8px, 6px) rotate(-1.5deg); }
+      20%, 40%, 60%, 80% { transform: translate(8px, -6px) rotate(1.5deg); }
+    }
+
+    .shake {
+      animation: screenShake 0.6s cubic-bezier(.36,.07,.19,.97) both;
+    }
+
+    /* Top Player Bar */
+    .top-bar {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      border-radius: 18px;
+      padding: 10px 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+
+    .player-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .player-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--red-neon), #ff6b8b);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.2);
+    }
+
+    .player-name {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text-main);
+      max-width: 110px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-rank {
+      font-size: 11px;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .balance-chip {
+      background: rgba(255, 184, 0, 0.12);
+      border: 1px solid rgba(255, 184, 0, 0.3);
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .balance-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      color: var(--gold);
+      font-size: 15px;
+    }
+
+    /* Main Arena Card */
+    .arena-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      box-shadow: 0 16px 36px rgba(0,0,0,0.4);
+      flex: 1;
+      justify-content: space-around;
+      margin-bottom: 12px;
+    }
+
+    .round-badge {
+      background: rgba(255, 42, 85, 0.15);
+      border: 1px solid var(--red-glow);
+      color: var(--red-neon);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .pot-display {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .pot-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .pot-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 36px;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 20px var(--gold-glow);
+    }
+
+    .pot-value span {
+      color: var(--gold);
+      font-size: 20px;
+    }
+
+    /* Cylinder SVG Visual */
+    .cylinder-container {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin: 10px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .revolver-svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 0 18px rgba(0, 0, 0, 0.6));
+      transition: transform 0.8s cubic-bezier(0.15, 0.85, 0.35, 1.2);
+    }
+
+    .chamber-slot {
+      transition: fill 0.3s ease, stroke 0.3s ease;
+    }
+
+    .target-crosshair {
+      position: absolute;
+      top: 15px;
+      width: 32px;
+      height: 32px;
+      pointer-events: none;
+      animation: pulseTarget 1.5s infinite;
+    }
+
+    @keyframes pulseTarget {
+      0%, 100% { opacity: 0.8; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 8px var(--red-neon)); }
+    }
+
+    /* Suspense / Status Banner */
+    .status-banner {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      padding: 0 10px;
+    }
+
+    .status-highlight {
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Action Buttons Area */
+    .action-area {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border-radius: 18px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+    }
+
+    .btn-fire {
+      background: linear-gradient(135deg, #ff1a47, #d9002f);
+      color: #fff;
+      box-shadow: 0 8px 24px var(--red-glow);
+    }
+
+    .btn-fire:hover {
+      box-shadow: 0 10px 30px rgba(255, 42, 85, 0.6);
+    }
+
+    .btn-cashout {
+      background: linear-gradient(135deg, #ffb800, #e69500);
+      color: #1a1200;
+      box-shadow: 0 8px 24px var(--gold-glow);
+    }
+
+    .btn-cashout:hover {
+      box-shadow: 0 10px 30px rgba(255, 184, 0, 0.6);
+    }
+
+    .btn-disabled {
+      opacity: 0.4;
+      pointer-events: none;
+      filter: grayscale(1);
+    }
+
+    .sub-notice {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Outcome Overlays */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 7, 10, 0.88);
+      backdrop-filter: blur(12px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 360px;
+      background: #141720;
+      border: 1px solid var(--card-border);
+      border-radius: 26px;
+      padding: 28px 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+      animation: popIn 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.85); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-icon {
+      font-size: 52px;
+      margin-bottom: 12px;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+
+    .modal-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    .modal-stat {
+      background: rgba(255,255,255,0.05);
+      border-radius: 14px;
+      padding: 10px 18px;
+      width: 100%;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Player Info -->
+  <div class="top-bar">
+    <div class="player-info">
+      <div class="player-avatar" id="playerAvatar">?</div>
+      <div>
+        <div class="player-name" id="playerName">Loading...</div>
+        <div class="player-rank" id="playerRank">Survivor Rank</div>
+      </div>
+    </div>
+    <div class="balance-chip">
+      <span>💰</span>
+      <span class="balance-val" id="playerBalance">0</span>
+    </div>
+  </div>
+
+  <!-- Arena Card -->
+  <div class="arena-card" id="arenaCard">
+    <div class="round-badge" id="roundBadge">ROUND 1 of 6</div>
+
+    <div class="pot-display">
+      <div class="pot-label">Current Prize Pot</div>
+      <div class="pot-value" id="potValue">+50 <span>PTS</span></div>
+    </div>
+
+    <!-- 6-Chamber Revolver SVG Cylinder -->
+    <div class="cylinder-container">
+      <svg class="target-crosshair" viewBox="0 0 24 24" fill="none" stroke="#ff2a55" stroke-width="2.5">
+        <circle cx="12" cy="12" r="9"/>
+        <line x1="12" y1="1" x2="12" y2="6"/>
+        <line x1="12" y1="18" x2="12" y2="23"/>
+        <line x1="1" y1="12" x2="6" y2="12"/>
+        <line x1="18" y1="12" x2="23" y2="12"/>
+      </svg>
+
+      <svg id="revolverSvg" class="revolver-svg" viewBox="0 0 200 200">
+        <!-- Outer steel rim -->
+        <circle cx="100" cy="100" r="90" fill="#1c212c" stroke="#333b4b" stroke-width="5"/>
+        <circle cx="100" cy="100" r="82" fill="none" stroke="#12161f" stroke-width="2"/>
+        <!-- Center brass cylinder hub -->
+        <circle cx="100" cy="100" r="26" fill="#2d3342" stroke="#4f596f" stroke-width="4"/>
+        <circle cx="100" cy="100" r="10" fill="#ffb800" opacity="0.8"/>
+        <!-- 6 Chambers -->
+        <circle id="slot1" class="chamber-slot" cx="100" cy="42" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+        <circle id="slot2" class="chamber-slot" cx="150" cy="71" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+        <circle id="slot3" class="chamber-slot" cx="150" cy="129" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+        <circle id="slot4" class="chamber-slot" cx="100" cy="158" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+        <circle id="slot5" class="chamber-slot" cx="50" cy="129" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+        <circle id="slot6" class="chamber-slot" cx="50" cy="71" r="18" fill="#0d1017" stroke="#4f596f" stroke-width="3"/>
+      </svg>
+    </div>
+
+    <!-- Status / Tension -->
+    <div class="status-banner" id="statusBanner">
+      Spin cylinder & pull trigger to test your luck!
+    </div>
+  </div>
+
+  <!-- Action Controls -->
+  <div class="action-area">
+    <button class="btn btn-fire" id="btnFire">
+      <span>🔫</span>
+      <span id="btnFireText">PULL TRIGGER (ROUND 1)</span>
+    </button>
+    <button class="btn btn-cashout" id="btnCashout" style="display: none;">
+      <span>💰</span>
+      <span id="btnCashoutText">CASH OUT (+50 PTS)</span>
+    </button>
+    <div class="sub-notice" id="subNotice">⚠️ Death penalty: -150 pts from wallet if live round fires</div>
+  </div>
+
+  <!-- Death / Win Modals -->
+  <div class="modal-overlay" id="outcomeModal">
+    <div class="modal-card">
+      <div class="modal-icon" id="modalIcon">💥</div>
+      <div class="modal-title" id="modalTitle">KHEL KHATAM!</div>
+      <div class="modal-desc" id="modalDesc">Live round hit! You lost all points.</div>
+      <div class="modal-stat">
+        <span style="color: var(--text-muted);">Points Change:</span>
+        <span id="modalPtsDelta" style="color: var(--red-neon);">-150 PTS</span>
+      </div>
+      <button class="btn btn-fire" id="modalBtn">TRY AGAIN</button>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    // Sound Synthesizer via Web Audio API (Native, Zero External Assets)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) audioCtx = new AudioCtx();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function playSpinSound() {
+      const ctx = getAudioContext();
+      for (let i = 0; i < 8; i++) {
+        setTimeout(() => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(400 + Math.random() * 300, ctx.currentTime);
+          gain.gain.setValueAtTime(0.15, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.05);
+        }, i * 90);
+      }
+    }
+
+    function playHammerSound() {
+      const ctx = getAudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(180, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.08);
+    }
+
+    function playClickSound() {
+      const ctx = getAudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.06);
+    }
+
+    function playBoomSound() {
+      const ctx = getAudioContext();
+      const bufferSize = ctx.sampleRate * 0.8;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.18));
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(600, ctx.currentTime);
+      filter.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.8);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(1.0, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+      noise.start();
+
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.5);
+      oscGain.gain.setValueAtTime(0.8, ctx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    }
+
+    function playCashoutSound() {
+      const ctx = getAudioContext();
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        setTimeout(() => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.35);
+        }, idx * 80);
+      });
+    }
+
+    // Game State
+    let user = {
+      id: tg?.initDataUnsafe?.user?.id || 6056618592,
+      name: tg?.initDataUnsafe?.user?.first_name || "Player"
+    };
+
+    let round = 1;
+    let currentPot = 0;
+    let isSpinning = false;
+    let userPoints = 200;
+    let rotationDeg = 0;
+
+    const roundPots = {
+      1: 50,
+      2: 120,
+      3: 220,
+      4: 380,
+      5: 600,
+      6: 1000
+    };
+
+    // UI Elements
+    const playerAvatar = document.getElementById("playerAvatar");
+    const playerName = document.getElementById("playerName");
+    const playerRank = document.getElementById("playerRank");
+    const playerBalance = document.getElementById("playerBalance");
+    const roundBadge = document.getElementById("roundBadge");
+    const potValue = document.getElementById("potValue");
+    const statusBanner = document.getElementById("statusBanner");
+    const btnFire = document.getElementById("btnFire");
+    const btnFireText = document.getElementById("btnFireText");
+    const btnCashout = document.getElementById("btnCashout");
+    const btnCashoutText = document.getElementById("btnCashoutText");
+    const revolverSvg = document.getElementById("revolverSvg");
+    const arenaCard = document.getElementById("arenaCard");
+    const outcomeModal = document.getElementById("outcomeModal");
+    const modalIcon = document.getElementById("modalIcon");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalDesc = document.getElementById("modalDesc");
+    const modalPtsDelta = document.getElementById("modalPtsDelta");
+    const modalBtn = document.getElementById("modalBtn");
+
+    playerName.textContent = user.name;
+    playerAvatar.textContent = user.name.charAt(0).toUpperCase();
+
+    async function loadPlayerData() {
+      try {
+        const res = await fetch(`/api/player?user_id=${user.id}&user_name=${encodeURIComponent(user.name)}`);
+        if (res.ok) {
+          const data = await res.json();
+          userPoints = data.points;
+          playerBalance.textContent = userPoints;
+          playerRank.textContent = `Rank #${data.rank || 1} • Streak: ${data.streak || 0}🔥`;
+        }
+      } catch (e) {
+        console.error("Player load error:", e);
+      }
+    }
+
+    loadPlayerData();
+
+    function updatePotUI() {
+      roundBadge.textContent = `ROUND ${round} of 6`;
+      const nextPot = roundPots[round] || 50;
+      potValue.innerHTML = `+${currentPot || nextPot} <span>PTS</span>`;
+      btnFireText.textContent = currentPot === 0 
+        ? `PULL TRIGGER (ROUND 1: +50 PTS)` 
+        : `RISK IT FOR +${roundPots[round]} PTS!`;
+
+      if (currentPot > 0) {
+        btnCashout.style.display = "flex";
+        btnCashoutText.textContent = `CASH OUT (+${currentPot} PTS)`;
+      } else {
+        btnCashout.style.display = "none";
+      }
+    }
+
+    updatePotUI();
+
+    function resetSlots() {
+      for (let i = 1; i <= 6; i++) {
+        const el = document.getElementById(`slot${i}`);
+        if (el) {
+          el.setAttribute("fill", "#0d1017");
+          el.setAttribute("stroke", "#4f596f");
+        }
+      }
+    }
+
+    btnFire.addEventListener("click", async () => {
+      if (isSpinning) return;
+      if (userPoints < 150 && currentPot === 0) {
+        alert("Abe gareeb! Jeb me 150 points nahi hain! /daily se claim karo pehle!");
+        return;
+      }
+
+      isSpinning = true;
+      btnFire.classList.add("btn-disabled");
+      btnCashout.classList.add("btn-disabled");
+
+      statusBanner.innerHTML = `🌀 <span class="status-highlight">Spinning cylinder...</span>`;
+      playSpinSound();
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+      const spinAngle = 720 + Math.floor(Math.random() * 6) * 60;
+      rotationDeg += spinAngle;
+      revolverSvg.style.transform = `rotate(${rotationDeg}deg)`;
+
+      await new Promise(r => setTimeout(r, 900));
+
+      statusBanner.innerHTML = `🎯 <span class="status-highlight">Hammer cocked... Aiming temple...</span> 😰`;
+      playHammerSound();
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('heavy');
+
+      await new Promise(r => setTimeout(r, 900));
+
+      try {
+        const res = await fetch("/api/spin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: user.id,
+            user_name: user.name,
+            round: round,
+            current_pot: currentPot
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.status === "dead") {
+          playBoomSound();
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+          arenaCard.classList.add("shake");
+          setTimeout(() => arenaCard.classList.remove("shake"), 700);
+
+          const hitSlot = document.getElementById(`slot${data.chamber}`);
+          if (hitSlot) {
+            hitSlot.setAttribute("fill", "#ff1a47");
+            hitSlot.setAttribute("stroke", "#ff2a55");
+          }
+
+          statusBanner.innerHTML = `💥 <span style="color: #ff2a55; font-weight: 800;">BOOOOOOM!! Bullet fired from chamber ${data.chamber}/6!</span>`;
+          userPoints = data.new_points;
+          playerBalance.textContent = userPoints;
+
+          setTimeout(() => {
+            modalIcon.textContent = "💥";
+            modalTitle.textContent = "KHEL KHATAM!";
+            modalTitle.style.color = "#ff2a55";
+            modalDesc.textContent = data.roast || `Goli lag gayi! Game ke points barbaad aur wallet se -150 Points kat gaye.`;
+            modalPtsDelta.textContent = "-150 PTS";
+            modalPtsDelta.style.color = "#ff2a55";
+            outcomeModal.style.display = "flex";
+          }, 1000);
+
+        } else if (data.status === "jackpot") {
+          playCashoutSound();
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+          userPoints = data.new_points;
+          playerBalance.textContent = userPoints;
+
+          modalIcon.textContent = "👑";
+          modalTitle.textContent = "ULTIMATE LEGEND!";
+          modalTitle.style.color = "#ffb800";
+          modalDesc.textContent = `Lagatar 6 rounds survive kar liye! You won the ultimate jackpot!`;
+          modalPtsDelta.textContent = `+${data.jackpot} PTS`;
+          modalPtsDelta.style.color = "#00e676";
+          outcomeModal.style.display = "flex";
+
+        } else {
+          playClickSound();
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+          const safeSlot = document.getElementById(`slot${data.chamber}`);
+          if (safeSlot) {
+            safeSlot.setAttribute("fill", "#00e676");
+            safeSlot.setAttribute("stroke", "#00f2fe");
+          }
+
+          currentPot = data.current_pot;
+          round = data.next_round;
+          statusBanner.innerHTML = `💨 <span style="color: #00e676; font-weight: 800;">CLICK! Chamber ${data.chamber}/6 was empty!</span> Survived Round ${round - 1}!`;
+          updatePotUI();
+
+          btnFire.classList.remove("btn-disabled");
+          btnCashout.classList.remove("btn-disabled");
+          isSpinning = false;
+        }
+
+      } catch (e) {
+        console.error("Spin error:", e);
+        statusBanner.textContent = "Network error. Try again.";
+        btnFire.classList.remove("btn-disabled");
+        isSpinning = false;
+      }
+    });
+
+    btnCashout.addEventListener("click", async () => {
+      if (isSpinning || currentPot === 0) return;
+      isSpinning = true;
+      btnFire.classList.add("btn-disabled");
+      btnCashout.classList.add("btn-disabled");
+
+      try {
+        const res = await fetch("/api/cashout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: user.id,
+            user_name: user.name,
+            pot: currentPot
+          })
+        });
+
+        const data = await res.json();
+        playCashoutSound();
+        if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+        userPoints = data.new_points;
+        playerBalance.textContent = userPoints;
+
+        modalIcon.textContent = "💰";
+        modalTitle.textContent = "CASHED OUT & SAFE!";
+        modalTitle.style.color = "#ffb800";
+        modalDesc.textContent = `Samajhdari dikhai aur +${currentPot} points jeet ke nikal gaye! Current Streak: ${data.streak}🔥`;
+        modalPtsDelta.textContent = `+${currentPot} PTS`;
+        modalPtsDelta.style.color = "#00e676";
+        outcomeModal.style.display = "flex";
+
+      } catch (e) {
+        console.error("Cashout error:", e);
+        isSpinning = false;
+      }
+    });
+
+    modalBtn.addEventListener("click", () => {
+      outcomeModal.style.display = "none";
+      round = 1;
+      currentPot = 0;
+      isSpinning = false;
+      resetSlots();
+      updatePotUI();
+      btnFire.classList.remove("btn-disabled");
+      statusBanner.textContent = "Ready for a new game! Spin & pull trigger.";
+    });
+  </script>
+</body>
+</html>
