@@ -429,6 +429,698 @@ def expire_roulette_session(session_id, chat_id, message_id, user_name):
         )
         update_roulette_msg(chat_id, message_id, timeout_text, reply_markup=None)
 
+def get_recent_chat_history(chat_id, limit=CONTEXT_MESSAGE_LIMIT):
+    """Thread-safe retrieval of recent messages."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            res = conn.execute(
+                """SELECT user_name, message_text FROM (
+                       SELECT id, user_name, message_text FROM messages 
+                       WHERE chat_id = ? ORDER BY id DESC LIMIT ?
+                   ) ORDER BY id ASC""",
+                (chat_id, limit)
+            ).fetchall()
+            return res
+    except Exception:
+        return []
+
+def load_roms_and_kernels():
+    """Loads all 600+ ROMs, Kernels, and Recoveries from json catalog."""
+    if os.path.exists(ROMS_DATABASE_FILE):
+        try:
+            with open(ROMS_DATABASE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading {ROMS_DATABASE_FILE}: {e}")
+            return []
+    return []
+
+ALL_ROMS = load_roms_and_kernels()
+
+KNOWN_BRANDS = [
+    "lineage", "infinity", "crdroid", "evolution", "matrixx", "matrix",
+    "axion", "rising", "derpfest", "bliss", "orangefox",
+    "twrp", "pbrp", "takoyaki", "miku", "morphe", "sukisu", "kernelsu",
+    "bakasu", "resukisu", "elixir", "blaze", "cherish", "voltage",
+    "pixelos", "pixelplus", "corvus", "ancient", "dotos", "arrow", "yuri"
+]
+
+FILE_KEYWORDS = [
+    "rom", "kernel", "recovery", "twrp", "pbrp", "orangefox", "ofox",
+    "shrp", "firmware", "boot img", "boot.img", "bootimage", "boot_img",
+    "vendor", "fastboot", "spft", "c.19", "c.18", "c.17", "flashable",
+    "os", "port", "zip", "build", "img"
+]
+
+
+def normalize_text(t):
+    """Fixes typos, Hinglish slang, and shorthand names."""
+    t = (t or "").lower()
+    typos = {
+        r'\blienage\w*': 'lineage',
+        r'\blinege\w*': 'lineage',
+        r'\blinage\w*': 'lineage',
+        r'\blineageos\b': 'lineage',
+        r'\bevox\w*': 'evolution',
+        r'\bofox\b': 'orangefox',
+        r'\bfox\b': 'orangefox',
+        r'\bpbp\b': 'pbrp',
+        r'\bpb\b': 'pbrp',
+        r'\btakoyki\w*': 'takoyaki',
+        r'\bkernal\w*': 'kernel',
+        r'\bkrnl\b': 'kernel',
+        r'\baxionaosp\b': 'axion',
+        r'\brec\b': 'recovery',
+        r'\bmatrix\b': 'matrixx',
+        r'\bmatrixos\b': 'matrixx',
+        r'\bmatrixxos\b': 'matrixx',
+    }
+    for pat, repl in typos.items():
+        t = re.sub(pat, repl, t)
+    return t
+
+def extract_negatives(q):
+    """Extract negative exclusions like 'not lineage', 'without boot', 'no gapps'."""
+    neg_patterns = [
+        r'\b(?:not|without|no|dont\s+want|except)\s+([a-z0-9_\-\.\s]+)'
+    ]
+    negatives = []
+    for pat in neg_patterns:
+        matches = re.findall(pat, q.lower())
+        for m in matches:
+            tokens = re.split(r'[,;\s]+', m)
+            for tok in tokens:
+                if tok and tok not in ["a", "the", "me", "give", "os", "file", "img"]:
+                    negatives.append(tok)
+                elif tok == "boot":
+                    negatives.append("boot")
+    return negatives
+
+def parse_date_from_name(name):
+    """Extracts date integer YYYYMMDD for sorting."""
+    # YYYYMMDD (e.g. 20260412)
+    m1 = re.search(r'\b(202[4-6])(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b', name)
+    if m1:
+        return int(m1.group(1) + m1.group(2) + m1.group(3))
+    # DDMMYYYY (e.g. 18052025, 21082025)
+    m2 = re.search(r'\b(0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(202[4-6])\b', name)
+    if m2:
+        return int(m2.group(3) + m2.group(2) + m2.group(1))
+    # DD.MM.YYYY (e.g. 05.04.2026)
+    m3 = re.search(r'\b(0[1-9]|[12]\d|3[01])\.(0[1-9]|1[0-2])\.(202[4-6])\b', name)
+    if m3:
+        return int(m3.group(3) + m3.group(2) + m3.group(1))
+    return 0
+
+def is_explicit_file_request(text, reply_to_text=None):
+    """
+    Strictly determines whether the user is asking to download or receive a file/ROM/kernel/recovery.
+    Returns False for all conversational banter, roasts, jokes, opinions, or general chat.
+    """
+    if not text:
+        return False
+    t = text.lower().strip()
+
+    # 1. HARD CONVERSATIONAL EXCLUSIONS
+    # Requests for jokes, roasts, memes, teasing, or casual chat are NEVER file requests!
+    conv_exclusions = [
+        r'\bjoke\b', r'\bchutkula\b', r'\bchutkule\b', r'\broast\b', r'\brost\b',
+        r'\bmeme\b', r'\bshayari\b', r'\bhasao\b', r'\bhanso\b', r'\bhasi\b',
+        r'\bpel\b', r'\bpelna\b', r'\bpelo\b', r'\bpel\s+do\b',
+        r'\bbaja\b', r'\bbajao\b', r'\bbaja\s+do\b', r'\bclass\s+lo\b', r'\bbezzati\b',
+        r'\bkaisa\s+hai\b', r'\bkaise\s+ho\b', r'\bkya\s+chal\b',
+        r'\bwho\s+are\s+you\b', r'\btu\s+kaun\b', r'\bgood\s+morning\b', r'\bgood\s+night\b'
+    ]
+    for pat in conv_exclusions:
+        if re.search(pat, t):
+            return False
+
+    # Standalone non-file words: "kro", "kar", "chup", "bol", "oye", "sun", "haan", "nahi"
+    if re.fullmatch(r'(flash\s+)?(kro|karo|kar|oye|sun|bol|bata|chup|ha|haan|nahi|no|yes)\b', t):
+        return False
+
+    # 2. FILE INTENT WORDS (asking to receive or download)
+    give_download_words = [
+        r'\bgive\b', r'\bsend\b', r'\bdownload\b', r'\blink\b', r'\bde\b', r'\bdo\b',
+        r'\bdedo\b', r'\bchahiye\b', r'\bbhejo\b', r'\bprovide\b', r'\bshare\b',
+        r'\bnikal\b', r'\bnikalo\b', r'\bdaal\b', r'\bget\b'
+    ]
+    has_give_download = any(re.search(gw, t) for gw in give_download_words)
+
+    # 3. FILE TECH WORDS (ROM, Kernel, Recovery, etc.)
+    file_tech_words = [
+        r'\brom\b', r'\bkernel\b', r'\brecovery\b', r'\btwrp\b', r'\borangefox\b',
+        r'\bofox\b', r'\bpbrp\b', r'\bshrp\b', r'\bboot\s*img\b', r'\bboot\.img\b',
+        r'\bspft\b', r'\bc\.19\b', r'\bc\.18\b', r'\bc\.17\b', r'\bzip\b',
+        r'\bflashable\b', r'\bbuild\b', r'\bport\b'
+    ]
+    has_file_tech = any(re.search(fw, t) for fw in file_tech_words)
+
+    # 4. BRAND CHECK
+    t_norm = normalize_text(t)
+    has_brand = any(re.search(rf'\b{re.escape(b)}\b', t_norm) for b in KNOWN_BRANDS)
+
+    if has_brand:
+        return True
+
+    if has_file_tech:
+        return True
+
+    # If replying to a post and asking for the link/download:
+    if reply_to_text and has_give_download and any(w in t for w in ["link", "file", "download", "rom", "zip", "ye", "yeh"]):
+        return True
+
+    return False
+
+
+def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[], force_search=False):
+    """
+    Precision Search Engine:
+    - Only searches when explicit file/ROM request is detected"""
+    if not force_search and not is_explicit_file_request(query_text, reply_to_text=reply_to_text):
+        return [], None
+    """
+    - Typo & slang tolerant (e.g. pbp -> pbrp, ofox -> orangefox)
+    - Negative keyword filtering ('not lineage', 'without boot')
+    - Strict file type isolation (Recovery vs Kernel vs Boot Image vs ROM)
+    - Device model targeting (Realme 7 / RMX2151 vs Realme 6 / RMX2001)
+    - Firmware version isolation (RUI2 RM6785 vs RUI3 salaa)
+    - Chronological date & message ID sorting
+    - Informative fallback & version notices
+    """
+    q = (query_text or "").lower()
+    q_norm = normalize_text(q)
+
+    # Negative exclusions
+    negatives = extract_negatives(q_norm)
+    clean_q = re.sub(r'\b(?:not|without|no|dont\s+want|except)\s+[^,\.\?!]+', '', q_norm).strip()
+
+    # STRICT GUARD: Only search if user explicitly asks for a ROM/Kernel/Recovery or mentions a brand/reply
+    has_brand = any(b in clean_q for b in KNOWN_BRANDS)
+    has_file_kw = any(fk in clean_q for fk in FILE_KEYWORDS)
+    is_reply_to_file = False
+    if reply_to_text:
+        r_low = reply_to_text.lower()
+        if any(b in r_low for b in KNOWN_BRANDS + FILE_KEYWORDS) or ".zip" in r_low or ".img" in r_low:
+            is_reply_to_file = True
+
+    if not force_search and not has_brand and not has_file_kw and not is_reply_to_file:
+        return [], None
+
+
+    # 1. Detect Brand
+    detected_brand = None
+    for b in KNOWN_BRANDS:
+        if b in clean_q:
+            detected_brand = b
+            break
+
+    # If replying to a bot post, inherit brand from replied message
+    if not detected_brand and reply_to_text:
+        r_norm = normalize_text(reply_to_text)
+        for b in KNOWN_BRANDS:
+            if b in r_norm:
+                detected_brand = b
+                break
+
+    # Fallback to recent history
+    if not detected_brand and history_texts:
+        for h in history_texts:
+            h_norm = normalize_text(h)
+            for b in KNOWN_BRANDS:
+                if b in h_norm:
+                    detected_brand = b
+                    break
+            if detected_brand:
+                break
+
+    candidates = ALL_ROMS
+    if detected_brand:
+        candidates = [
+            item for item in ALL_ROMS
+            if detected_brand in item.get("name", "").lower() or detected_brand in item.get("caption", "").lower()
+        ]
+
+    # Filter out negatives
+    if negatives:
+        candidates = [
+            c for c in candidates
+            if not any(neg in c.get("name", "").lower() or neg in c.get("caption", "").lower() for neg in negatives)
+        ]
+
+    # 2. Firmware / Device Variant Detection: RUI2 vs RUI3 (salaa)
+    want_rui3 = any(k in clean_q for k in ["rui3", "rui 3", "salaa", "r7"]) and not any(k in clean_q for k in ["rui2", "rui 2"])
+    want_rui2 = any(k in clean_q for k in ["rui2", "rui 2", "rm6785", "r6", "non salaa", "without salaa"])
+
+    if want_rui3:
+        candidates = [c for c in candidates if "salaa" in c.get("name", "").lower() or "rui3" in c.get("caption", "").lower()]
+    elif want_rui2:
+        candidates = [c for c in candidates if "salaa" not in c.get("name", "").lower() and "rui3" not in c.get("caption", "").lower()]
+
+    if not candidates:
+        return [], None
+
+    # 3. File type: Recovery vs Kernel vs Boot Image vs ROM
+    want_recovery = any(k in clean_q for k in ["recovery", "rec", "twrp", "pbrp", "orangefox", "shrp"])
+    want_kernel = any(k in clean_q for k in ["kernel", "krnl"])
+    want_boot_img = any(k in clean_q for k in ["boot img", "boot.img", "bootimage", "boot_img"]) or ("boot" in clean_q and "kernel" not in clean_q)
+
+    if want_recovery:
+        rec_c = [c for c in candidates if c.get("type") == "recovery" or any(r in c.get("name", "").lower() for r in ["twrp", "pbrp", "orangefox", "recovery", "shrp"])]
+        if rec_c:
+            candidates = rec_c
+    elif want_boot_img:
+        img_c = [c for c in candidates if c.get("name", "").lower().endswith(".img") or "boot" in c.get("name", "").lower()]
+        if img_c:
+            candidates = img_c
+    elif want_kernel:
+        # Prefer flashable kernel zips
+        kern_c = [c for c in candidates if c.get("name", "").lower().endswith(".zip") and (c.get("type") == "kernel" or any(k in c.get("name", "").lower() for k in ["kernel", "takoyaki", "miku", "yuri", "neternal", "radon"]))]
+        if kern_c:
+            candidates = kern_c
+        else:
+            kern_c = [c for c in candidates if c.get("type") == "kernel"]
+            if kern_c:
+                candidates = kern_c
+    else:
+        # Default for ROM requests: prefer .zip files
+        zip_c = [c for c in candidates if c.get("name", "").lower().endswith(".zip")]
+        if zip_c:
+            candidates = zip_c
+
+    # 4. Device specific (Realme 7 vs Realme 6)
+    want_r7 = any(k in clean_q for k in ["realme 7", "rmx2151", "r7"])
+    want_r6 = any(k in clean_q for k in ["realme 6", "rmx2001", "r6"])
+    if want_r7:
+        r7_c = [c for c in candidates if any(k in (c.get("name", "") + " " + c.get("caption", "")).lower() for k in ["rmx2151", "realme 7", "r7", "salaa"])]
+        if r7_c:
+            candidates = r7_c
+    elif want_r6:
+        r6_c = [c for c in candidates if any(k in (c.get("name", "") + " " + c.get("caption", "")).lower() for k in ["rmx2001", "realme 6", "r6"])]
+        if r6_c:
+            candidates = r6_c
+
+    # 5. Variant detection (Vanilla vs MicroG vs GApps)
+    is_non_microg = any(k in clean_q for k in ["non microg", "without microg", "no microg"])
+    want_vanilla = any(k in clean_q for k in ["vanilla", "non microg", "without microg"])
+    want_microg = ("microg" in clean_q or "micro-g" in clean_q) and not is_non_microg
+    want_gapps = any(k in clean_q for k in ["gapps", "gms", "playstore"])
+
+    # Detect requested version
+    v_match = re.search(r'\b(\d+\.\d+|\d+)\b', clean_q)
+    detected_version = v_match.group(1) if v_match else None
+    version_note = None
+
+    if detected_version and detected_brand:
+        exact_v_candidates = [c for c in candidates if detected_version in c.get("name", "").lower() or detected_version in c.get("caption", "").lower()]
+        if exact_v_candidates:
+            candidates = exact_v_candidates
+        else:
+            version_note = f"💡 Version *{detected_version}* hasn't been uploaded to the dump channel yet! Giving you the latest available build:"
+
+    scored = []
+    for item in candidates:
+        name = item.get("name", "").lower()
+        caption = item.get("caption", "").lower()
+        combined = f"{name} {caption}"
+        score = 0
+
+        # Keyword matching for /give commands
+        q_words = [w for w in clean_q.split() if len(w) > 2 and w not in ["give", "file", "download", "link"]]
+        for qw in q_words:
+            if qw in name:
+                score += 30
+            elif qw in caption:
+                score += 15
+
+        if want_vanilla:
+            if "vanilla" in combined:
+                score += 30
+            if "microg" in combined:
+                score -= 20
+        elif want_microg:
+            if "microg" in combined or "micro-g" in combined:
+                score += 30
+        elif want_gapps:
+            if "gapps" in combined or "playstore" in combined:
+                score += 30
+
+        date_val = parse_date_from_name(name)
+        scored.append((score, date_val, item.get("message_id", 0), item))
+
+    # Sort by score, then date integer, then message_id
+    scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
+    results = [x[3] for x in scored[:3]]
+
+    # Informative version note for Axion RUI2
+    if detected_brand == "axion" and want_rui2 and not detected_version:
+        version_note = "💡 *Axion 2.5* is the latest RUI2 (RM6785) build in the dump channel! (Axion 2.8 is RUI3 salaa, and 2.9 is pinned in the group chat but not dumped yet)."
+
+    return results, version_note
+
+def is_sender_master(message):
+    """Detects Master Billu by Telegram username, ID, or fancy unicode display name."""
+    if not message or not getattr(message, 'from_user', None):
+        return False
+    username = (message.from_user.username or "").lower().replace("@", "")
+    if username in ["darkdevil7773b", "darkdevil7773"] or "darkdevil" in username:
+        return True
+    first_name = message.from_user.first_name or ""
+    last_name = message.from_user.last_name or ""
+    full_name = f"{first_name} {last_name}".strip()
+    norm_name = unicodedata.normalize('NFKD', full_name).lower()
+    if any(k in norm_name for k in ["billa", "billu", "darkdevil", "void"]):
+        return True
+    if any(k in full_name for k in ["\U0001D5E9", "〆"]):
+        return True
+    return False
+
+def should_respond(message, bot_username):
+    """Strict trigger: ONLY responds to the exact name 'flash' (or direct replies / private chat)."""
+    # Private chat: always respond
+    if getattr(message.chat, 'type', None) == 'private':
+        return True
+
+    # Reply to Flash's own message
+    if message.reply_to_message and message.reply_to_message.from_user:
+        if message.reply_to_message.from_user.is_bot:
+            if (message.reply_to_message.from_user.username or "").lower() == bot_username.lower():
+                return True
+
+    text = (message.text or "").strip()
+    t = text.lower()
+    if not t:
+        return False
+
+    # Filter out technical verb usage (e.g. 'I gotta flash it?', 'can i flash', 'flash rom')
+    verb_patterns = [
+        r"\b(to|can\s+i|should\s+i|how\s+to|clean|dirty|dont|don't|gotta|gonna|need\s+to|have\s+to|wanna|want\s+to|will|do\s+i|shall\s+i|must)\s+flash\b",
+        r"\bflash\s+(it|this|that|them|here|karna|kare|karega|karegi|karu|karu\s+kya|karo|firmware|rom|kernel|zip|img|module|partition|via|with|on|in|file|package)\b",
+        r"\b(flash\s+kar\w*|kar\w*\s+flash)\b",
+        r"\bflash(ing|able|ed)\b"
+    ]
+    for vp in verb_patterns:
+        if re.search(vp, t):
+            return False
+
+    # ONLY reacts if the word "flash" is explicitly present in message
+    if re.search(r"\bflash\b", t):
+        return True
+
+    return False
+
+
+# ============ HARD FAMILY WORD FILTER ============
+FAMILY_BANNED_PATTERNS = [
+    r'\bmummy\b', r'\bmomm?y\b', r'\bmom\b', r'\bmaa\b', r'\bmata\b', r'\bmother\b',
+    r'\bammi\b', r'\bamma\b', r'\bbaap\b', r'\bpapa\b', r'\bdad\b', r'\bdaddy\b',
+    r'\bfather\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b', r'\bwalid\b', r'\bwalida\b',
+    r'\bparivaar\b', r'\bkhandaan\b', r'\bfamily\b', r'\bparents\b',
+    r'\bjanani\b', r'\bjanak\b', r'\bgharwale\b', r'\bgharwalon\b',
+    r'\b(teri|tere|apni|apne)\s+(maa|baap|mummy|papa|ammi|abbu|mom|dad)\b',
+]
+
+SAFE_CLEAN_ROASTS = [
+    "Bhai tu rehne de, pehle apni baat me thoda sense daal le phir gyaan dena.",
+    "Bhai tu roast karne nikla tha ya apni hi beizzati karwane?",
+    "Aise faltu sawaal group me mat ghuseda kar bhai, thoda mature ho ja.",
+    "Bhai tu bolta bohot hai, par baat me logic bilkul zero rehta hai.",
+    "Bhai thoda chill kar aur pehle soch le ki bol kya raha hai.",
+    "Bhai group me itni bakwaas mat faila, chupchap baith ja.",
+    "Bhai rehne de, tujhse na ho payega yeh sab.",
+]
+
+def sanitize_for_ai(txt):
+    if not txt:
+        return ""
+    return re.sub(r"\bnigg[ae]r?s?\b", "guy", str(txt), flags=re.IGNORECASE)
+
+SYSTEM_PROMPT = """You are Flash, a regular, street-smart Indian guy in an Android Telegram group.
+You talk in natural, casual Roman Hinglish.
+Your boss is Billu bhai / Void (@darkdevil7773b). You always respect him and back him up.
+
+HOW TO TALK:
+1. NO FORCED JOKES OR METAPHORS:
+   - Absolutely no standup comedy, rhyming, or WhatsApp-style forward jokes.
+   - Never invent random objects or analogies (no cycle, chain, chai, tapri, popcorn, keyboard thak gaya, hawa me udna).
+   - Never use template phrases like 'itna X hai ki Y'.
+
+2. REAL BANTER & ROASTS:
+   - Call out the exact silly thing the target said or did using dry sarcasm.
+   - If someone asks an obvious question, hit back with simple sarcasm.
+   - If someone says random nonsense, tell them to stop trying to sound cool.
+   - If Boss says 'ask flash' or passes a tech question, answer it directly and normally.
+   - If someone compliments you, say thanks nicely.
+
+3. STRICT ZERO TOLERANCE - NO FAMILY WORDS:
+   - Absolutely NEVER mention parents, mother, father, family (no mummy, maa, baap, papa, mom, dad, ammi, abbu, parivaar, khandaan).
+
+4. FORMAT:
+   - Strictly 1 short line (under 15 words).
+   - Casual street Roman Hinglish only."""
+
+FEW_SHOTS = [
+    {
+        "role": "user",
+        "content": "Target: Aniket\nMessage: .ok\nBoss Command: Flash roast him\nTask: Roast Aniket",
+    },
+    {
+        "role": "assistant",
+        "content": "Bhai pure din me bas itna hi type karne ka dum bacha tha kya?",
+    },
+    {
+        "role": "user",
+        "content": "Target: NI\nMessage: I gotta flash it?\nBoss Command: None\nTask: Reply to NI",
+    },
+    {
+        "role": "assistant",
+        "content": "Nahi phone pe aarti utarni hai, flash hi karega na aur kya karega.",
+    },
+    {
+        "role": "user",
+        "content": "Target: Sid\nMessage: But I want to discuss\nBoss Command: None\nTask: Reply to Sid",
+    },
+    {
+        "role": "assistant",
+        "content": "Yahan koi panchayat nahi chal rahi jo tujhe faltu discussion karna hai.",
+    },
+    {
+        "role": "user",
+        "content": "Target: Sid\nMessage: Ok tell me why is Tel Aviv not my father yet\nBoss Command: None\nTask: Reply to Sid",
+    },
+    {
+        "role": "assistant",
+        "content": "Kuch bhi bol ke edgy banne ka try mat kar, bohot ajeeb lag raha hai.",
+    },
+    {
+        "role": "user",
+        "content": "Target: Jack Parrot\nMessage: Billeshwar is axion sm...\nBoss Command: ask flash\nTask: Answer Jack Parrot",
+    },
+    {
+        "role": "assistant",
+        "content": "Axion smooth hai bhai, daily use ke liye bina soche flash kar sakta hai.",
+    },
+    {
+        "role": "user",
+        "content": "Target: Boss (Billu bhai)\nMessage: kya scene hai flash\nBoss Command: None\nTask: Reply respectfully and casually to Boss Billu bhai",
+    },
+    {
+        "role": "assistant",
+        "content": "Sab badhiya Billu bhai, group me sab control me hai.",
+    },
+    {
+        "role": "user",
+        "content": "Target: Aniket\nMessage: nice bot flash well done\nBoss Command: None\nTask: Reply to Aniket",
+    },
+    {
+        "role": "assistant",
+        "content": "Shukriya bhai, bas Billu bhai ka setup aur aap sabka support hai.",
+    },
+]
+
+def contains_family_words(text):
+    """Hard Python filter: returns True if AI reply contains any family/parent words."""
+    if not text:
+        return False
+    t = text.lower()
+    for pat in FAMILY_BANNED_PATTERNS:
+        if re.search(pat, t):
+            return True
+    return False
+
+def try_groq(system_prompt, user_prompt, few_shots=None):
+    """Priority 1: Ultra-fast Groq LPU inference (~0.3s response)."""
+    for model in GROQ_MODELS:
+        messages = [{"role": "system", "content": system_prompt}]
+        if few_shots:
+            messages.extend(few_shots)
+        messages.append({"role": "user", "content": user_prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 250
+        }
+        try:
+            t0 = time.time()
+            res = http_session.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=4
+            )
+            if res.status_code == 200:
+                result = res.json()
+                msg = result.get("choices", [{}])[0].get("message", {})
+                raw = msg.get("content") or ""
+                cleaned = re.sub(r"<think>.*?</think>", "", str(raw), flags=re.DOTALL).strip()
+                if cleaned:
+                    dt = time.time() - t0
+                    logging.info(f"⚡ Replied via Groq Ultra-Fast [{model}] in {dt:.2f}s")
+                    return cleaned
+            elif res.status_code == 429:
+                logging.warning(f"Groq [{model}] 429 rate limit. Rotating to OpenRouter...")
+                break
+        except Exception as e:
+            logging.warning(f"Groq [{model}] error: {e}")
+    return None
+
+def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None):
+    key_short = api_key[:12] + "..." + api_key[-4:]
+    for model in OPENROUTER_MODELS:
+        messages = [{"role": "system", "content": system_prompt}]
+        if few_shots:
+            messages.extend(few_shots)
+        messages.append({"role": "user", "content": user_prompt})
+
+        payload = {
+            "model": model,
+            "reasoning": {"exclude": True},
+            "messages": messages,
+            "temperature": 0.4,
+            "max_tokens": 200
+        }
+        try:
+            t0 = time.time()
+            res = http_session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+                timeout=5
+            )
+            if res.status_code == 200:
+                result = res.json()
+                msg = result.get("choices", [{}])[0].get("message", {})
+                raw = msg.get("content") or msg.get("reasoning") or ""
+                cleaned = re.sub(r"<think>.*?</think>", "", str(raw), flags=re.DOTALL).strip()
+                if cleaned:
+                    dt = time.time() - t0
+                    logging.info(f"⚡ Replied via OpenRouter [{key_short}] ({model}) in {dt:.2f}s")
+                    return cleaned
+            elif res.status_code == 429:
+                logging.warning(f"OpenRouter [{key_short}] 429 rate limit reached. Rotating...")
+                break
+        except Exception as e:
+            logging.warning(f"OpenRouter [{key_short}] ({model}) error: {e}")
+    return None
+
+def try_gemini(system_prompt, user_prompt, few_shots=None):
+    contents = []
+    if few_shots:
+        for fs in few_shots:
+            role = "user" if fs["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": fs["content"]}]})
+    contents.append({"role": "user", "parts": [{"text": user_prompt}]})
+
+    payload = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 150, "temperature": 0.4}
+    }
+    for model in GEMINI_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        try:
+            t0 = time.time()
+            res = http_session.post(url, json=payload, timeout=6)
+            if res.status_code == 200:
+                data = res.json()
+                parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                text = ""
+                for p in parts:
+                    if not p.get("thought") and p.get("text"):
+                        text = p.get("text")
+                if not text and parts:
+                    text = parts[-1].get("text", "")
+                if text:
+                    dt = time.time() - t0
+                    logging.info(f"⚡ Replied via Google Gemini Studio ({model}) in {dt:.2f}s")
+                    return text.strip()
+            elif res.status_code == 429:
+                logging.warning(f"Gemini ({model}) 429 rate limit reached. Rotating...")
+        except Exception as e:
+            logging.warning(f"Gemini ({model}) error: {e}")
+    return None
+
+def call_ai(system_prompt, user_prompt, few_shots=None):
+    """
+    Multi-Tier AI Pipeline:
+    1. Groq (PRIORITY #1: Ultra-fast ~0.3s responses, 14,400 daily requests)
+    2. OpenRouter (PRIORITY #2: 4x Accounts Pool on Groq limit/busy)
+    3. Google Gemini Studio (PRIORITY #3: Reliable Fallback)
+    """
+    # 1. Primary: Groq LPU
+    reply = try_groq(system_prompt, user_prompt, few_shots=few_shots)
+    if reply:
+        return reply
+
+    # 2. Secondary: OpenRouter Pool (shuffled across 4 keys)
+    shuffled_keys = list(OPENROUTER_KEYS)
+    random.shuffle(shuffled_keys)
+    for key in shuffled_keys:
+        reply = try_openrouter_key(key, system_prompt, user_prompt, few_shots=few_shots)
+        if reply:
+            return reply
+
+    # 3. Ultimate Fallback: Google Gemini Studio
+    reply = try_gemini(system_prompt, user_prompt, few_shots=few_shots)
+    if reply:
+        return reply
+
+    raise RuntimeError("All AI providers (Groq, OpenRouter, Gemini) exhausted")
+
+@bot.channel_post_handler(content_types=['document', 'text', 'audio', 'video'])
+def handle_channel_post(message):
+    """Auto-indexes any future ROMs dropped in channel!"""
+    file_name = None
+    if message.document:
+        file_name = message.document.file_name
+    elif message.audio:
+        file_name = message.audio.file_name
+    elif message.video:
+        file_name = message.video.file_name
+
+    if file_name:
+        caption = message.caption or message.text or ""
+        msg_id = message.message_id
+        entry = {
+            "name": file_name,
+            "message_id": msg_id,
+            "caption": caption,
+            "type": "New Release",
+            "link": f"https://t.me/{CHANNEL_USERNAME}/{msg_id}"
+        }
+        ALL_ROMS.insert(0, entry)
+        try:
+            with open(ROMS_DATABASE_FILE, "w", encoding="utf-8") as f:
+                json.dump(ALL_ROMS, f, indent=2, ensure_ascii=False)
+            logging.info(f"🎉 New file saved from channel: {file_name} (Post #{msg_id})")
+        except Exception as e:
+            logging.error(f"Error updating database: {e}")
+
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:roulette|russianroulette)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_roulette_command(message):
     chat_id = message.chat.id
