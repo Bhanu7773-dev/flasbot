@@ -39,7 +39,7 @@ OPENROUTER_KEYS = [
 ]
 GEMINI_API_KEY = "AIzaSyCKjp_GVr-ntsYT-bZGSd-Gn_30DeEzrs8"
 
-BOT_NAMES = ["flash", "flashbot", "flashy", "dex"]
+BOT_NAMES = ["flash"]
 CHANNEL_USERNAME = "rm6785dumppAss"
 CHANNEL_ID = -1003087244808
 
@@ -653,7 +653,7 @@ def is_sender_master(message):
     return False
 
 def should_respond(message, bot_username):
-    """Smart trigger: catches bare 'flash', master calls, while ignoring technical verbs."""
+    """Strict trigger: ONLY responds to the exact name 'flash' (or direct replies / private chat)."""
     # Private chat: always respond
     if getattr(message.chat, 'type', None) == 'private':
         return True
@@ -669,16 +669,7 @@ def should_respond(message, bot_username):
     if not t:
         return False
 
-    # @mention
-    if f"@{bot_username.lower()}" in t:
-        return True
-
-    # Known bot aliases
-    for nick in ["flashbot", "flashy", "dex"]:
-        if re.search(rf"\b{re.escape(nick)}\b", t):
-            return True
-
-    # Filter out technical verb usage
+    # Filter out technical verb usage (e.g. 'I gotta flash it?', 'can i flash', 'flash rom')
     verb_patterns = [
         r"\b(to|can\s+i|should\s+i|how\s+to|clean|dirty|dont|don't|gotta|gonna|need\s+to|have\s+to|wanna|want\s+to|will|do\s+i|shall\s+i|must)\s+flash\b",
         r"\bflash\s+(it|this|that|them|here|karna|kare|karega|karegi|karu|karu\s+kya|karo|firmware|rom|kernel|zip|img|module|partition|via|with|on|in|file|package)\b",
@@ -689,7 +680,7 @@ def should_respond(message, bot_username):
         if re.search(vp, t):
             return False
 
-    # Any standalone mention of "flash" (bare "flash", "flash?", "kaisa hai flash", etc.)
+    # ONLY reacts if the word "flash" is explicitly present in message
     if re.search(r"\bflash\b", t):
         return True
 
