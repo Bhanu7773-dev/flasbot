@@ -433,6 +433,10 @@ with sqlite3.connect(DB_PATH) as conn:
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER,
+            user_id INTEGER,
+            message_id INTEGER,
+            reply_to_msg_id INTEGER,
+            reply_to_user_id INTEGER,
             user_name TEXT,
             message_text TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -448,6 +452,20 @@ with sqlite3.connect(DB_PATH) as conn:
             last_daily INTEGER DEFAULT 0
         );
     """)
+    # Safe migration for existing DB
+    cursor = conn.execute("PRAGMA table_info(messages)")
+    existing_cols = [row[1] for row in cursor.fetchall()]
+    for col_name, col_type in [
+        ("user_id", "INTEGER"),
+        ("message_id", "INTEGER"),
+        ("reply_to_msg_id", "INTEGER"),
+        ("reply_to_user_id", "INTEGER")
+    ]:
+        if col_name not in existing_cols:
+            try:
+                conn.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
 
 BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 6056618592))
 
@@ -554,13 +572,15 @@ try:
 except Exception as _e:
     logging.warning(f"Initial cloud restore warning: {_e}")
 
-def save_chat_message(chat_id, user_name, text):
-    """Thread-safe storage of group messages for conversational context."""
+def save_chat_message(chat_id, user_name, text, user_id=None, message_id=None, reply_to_msg_id=None, reply_to_user_id=None):
+    """Thread-safe storage of group messages with thread & user tracking."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
-                "INSERT INTO messages (chat_id, user_name, message_text) VALUES (?, ?, ?)",
-                (chat_id, user_name, text)
+                """INSERT INTO messages 
+                   (chat_id, user_name, message_text, user_id, message_id, reply_to_msg_id, reply_to_user_id) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (chat_id, user_name, text, user_id, message_id, reply_to_msg_id, reply_to_user_id)
             )
     except Exception as e:
         logging.error(f"Error saving message: {e}")
@@ -729,6 +749,84 @@ def get_recent_chat_history(chat_id, limit=CONTEXT_MESSAGE_LIMIT):
             return res
     except Exception:
         return []
+
+def get_reply_thread_chain(chat_id, start_msg_id, limit=8):
+    """
+    Traces the exact chain of replies backwards starting from start_msg_id.
+    Returns list of (user_name, message_text) in chronological order (oldest first).
+    """
+    if not start_msg_id:
+        return []
+    chain = []
+    current_id = start_msg_id
+    visited = set()
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            while current_id and current_id not in visited and len(chain) < limit:
+                visited.add(current_id)
+                row = conn.execute(
+                    "SELECT user_name, message_text, reply_to_msg_id FROM messages WHERE chat_id = ? AND message_id = ?",
+                    (chat_id, current_id)
+                ).fetchone()
+                if not row:
+                    break
+                chain.append((row[0], row[1]))
+                current_id = row[2]
+        chain.reverse()
+        return chain
+    except Exception as e:
+        logging.error(f"Error tracing reply chain: {e}")
+        return []
+
+def get_user_thread_history(chat_id, user_id, user_name, limit=10):
+    """
+    Fetches the recent conversation strictly between this specific user and Flash.
+    Completely excludes other group members and other conversations.
+    Returns list of (user_name, message_text) in chronological order (oldest first).
+    """
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            if user_id:
+                rows = conn.execute(
+                    """SELECT user_name, message_text FROM (
+                           SELECT id, user_name, message_text FROM messages
+                           WHERE chat_id = ? 
+                             AND (
+                                 user_id = ? 
+                                 OR (user_name = 'Flash' AND reply_to_user_id = ?)
+                                 OR (user_name = 'Flash' AND reply_to_msg_id IN (
+                                     SELECT message_id FROM messages WHERE chat_id = ? AND user_id = ?
+                                 ))
+                             )
+                           ORDER BY id DESC LIMIT ?
+                       ) ORDER BY id ASC""",
+                    (chat_id, user_id, user_id, chat_id, user_id, limit)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT user_name, message_text FROM (
+                           SELECT id, user_name, message_text FROM messages
+                           WHERE chat_id = ? AND (user_name = ? OR user_name = 'Flash')
+                           ORDER BY id DESC LIMIT ?
+                       ) ORDER BY id ASC""",
+                    (chat_id, user_name, limit)
+                ).fetchall()
+            return rows
+    except Exception as e:
+        logging.error(f"Error fetching user thread history: {e}")
+        return []
+
+def get_conversation_thread(chat_id, user_id, user_name, reply_to_msg_id=None, limit=10):
+    """
+    Gets the most accurate thread:
+    1. If user replied in a reply-chain, trace the exact chain backwards.
+    2. Combine with the clean user <-> Flash direct conversation history.
+    Never includes unrelated messages from other users.
+    """
+    chain = get_reply_thread_chain(chat_id, reply_to_msg_id, limit=limit)
+    if chain and len(chain) >= 2:
+        return chain
+    return get_user_thread_history(chat_id, user_id, user_name, limit=limit)
 
 def load_roms_and_kernels():
     """Loads all 600+ ROMs, Kernels, and Recoveries from json catalog."""
@@ -1153,10 +1251,14 @@ def sanitize_for_ai(txt):
 SYSTEM_PROMPT = """You are Flash, a member of an Android ROM and custom-recovery Telegram group (Realme 6/7, RM6785). You are a sharp, quick-witted Indian guy in his 20s who types casual Roman Hinglish like a real group chat.
 Your boss is Billu bhai (Void, @darkdevil7773b). Always respect him and back him up.
 
-YOU RECEIVE: recent chat (oldest first), who is replying to whom, the sender, the exact message, and a MODE: ROAST, ANSWER or CHAT.
+YOU RECEIVE: exact conversation thread with this specific person (oldest first), who is replying to whom, the sender, the exact message, and a MODE: ROAST, ANSWER or CHAT.
 
 BEFORE REPLYING
-- Work out what the person actually means. If the message is short ("Kaha hain", "ye kya hai"), use the message they replied to and the last few lines. Answer THAT, not the literal words.
+- Work out what the person actually means.
+- THREAD CONTEXT & MEMORY:
+  * You are provided with the EXACT previous conversation thread between you and this specific person.
+  * If the user refers to previous lines ("kya bola upr", "iske pehle kya bola", "pehle kya bola tha", "repeat kar", "kisko bola", "what did you say earlier"), examine the earlier turns in the conversation thread and answer accurately based on what was ACTUALLY said earlier.
+  * Never repeat the immediate reply-to message if they ask what you said BEFORE it; trace backwards to the previous message in the thread.
 - Never invent facts, files, links or steps. If you don't know, say so in one line.
 
 MODE ROAST
@@ -1185,6 +1287,8 @@ FEW_SHOTS = [
     {"role": "assistant", "content": "'.ok' likhne ke liye poora notification bhej diya group ko? Ya kuch bol, ya chup reh."},
     {"role": "user", "content": "Sender: Rohit\nMessage: rom do\nMode: ROAST"},
     {"role": "assistant", "content": "Kaunsa phone, kaunsa ROM, kaunsa version? Poora sawaal likhne mein mehnat lagti hai kya?"},
+    {"role": "user", "content": "Conversation thread with Void (oldest first):\nVoid: flash roast me\nFlash: Billu bhai roast maang rahe ho aur khud hi hi flash likh rahe ho, keyboard thak gaya tumse!\nVoid: flash roast anjali\nFlash: Anjali's ROM is so ancient, even the bootloader sighs and says I need a coffee break.\nVoid: kya bola upr tumne\nFlash: Maine Anjali ke ROM ko itna purana bataya ki bootloader bhi coffee break maang raha tha.\n\nReplying to Flash: 'Maine Anjali ke ROM ko itna purana bataya ki bootloader bhi coffee break maang raha tha.'\nSender: Boss (Billu bhai)\nMessage: iske pehle kay bolra tha\nMode: ANSWER"},
+    {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai roast maang rahe ho aur khud hi hi flash likh rahe ho, keyboard thak gaya tumse!'"},
     {"role": "user", "content": "Sender: Aman\nMessage: can i flash without unlocking bootloader\nMode: ROAST"},
     {"role": "assistant", "content": "Even your mom knows you have to unlock the bootloader first. Dimaag ghar pe bhool ke aaya hai kya?"},
     {"role": "user", "content": "Sender: Vicky\nMessage: mujhe recovery flash karke do jaldi teamviewer pe\nMode: ROAST"},
@@ -1993,10 +2097,35 @@ def pick_mode(text, is_boss_roast=False):
 def handle_group_message(message):
     chat_id = message.chat.id
     user_name = message.from_user.first_name or "Friend"
+    user_id = message.from_user.id if message.from_user else None
+    message_id = message.message_id
     text = message.text
 
-    # 1. Silently record all conversation
-    save_chat_message(chat_id, user_name, text)
+    reply_to_msg_id = None
+    reply_to_user_id = None
+    rep_name = "Someone"
+    rep_text = ""
+    reply_to_text = None
+
+    if message.reply_to_message:
+        reply_to_msg_id = message.reply_to_message.message_id
+        reply_to_text = message.reply_to_message.caption or message.reply_to_message.text or ""
+        rep_user = message.reply_to_message.from_user
+        if rep_user:
+            reply_to_user_id = rep_user.id
+            rep_name = rep_user.first_name or "Someone"
+        rep_text = sanitize_for_ai(reply_to_text)
+
+    # 1. Silently record message with full thread metadata
+    save_chat_message(
+        chat_id=chat_id,
+        user_name=user_name,
+        text=text,
+        user_id=user_id,
+        message_id=message_id,
+        reply_to_msg_id=reply_to_msg_id,
+        reply_to_user_id=reply_to_user_id
+    )
 
     # 2. Check if the user addressed Flash
     bot_info = bot.get_me()
@@ -2004,23 +2133,25 @@ def handle_group_message(message):
         logging.info(f"Bot invoked by {user_name}: {text}")
         bot.send_chat_action(chat_id, "typing")
 
-        # Get replied-to message text if any
-        reply_to_text = None
-        rep_name = "Someone"
-        rep_text = ""
-        if message.reply_to_message:
-            reply_to_text = message.reply_to_message.caption or message.reply_to_message.text or ""
-            rep_user = message.reply_to_message.from_user
-            if rep_user:
-                rep_name = rep_user.first_name or "Someone"
-            rep_text = sanitize_for_ai(reply_to_text)
+        # Fetch conversation thread STRICTLY between this same user and Flash
+        thread_history = get_conversation_thread(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_name=user_name,
+            reply_to_msg_id=reply_to_msg_id,
+            limit=10
+        )
 
-        # Fetch recent chat context (8 lines, oldest first)
-        recent_history = get_recent_chat_history(chat_id, limit=8)
-        history_texts = [m[1] for m in recent_history if m[1] != text]
+        # Exclude the current message from previous thread history
+        filtered_thread = []
+        for u, m in thread_history:
+            if m == text and u == user_name:
+                continue
+            filtered_thread.append((u, m))
 
-        # 1. Route file requests before the AI
+        # Route file requests before the AI
         if wants_file(text):
+            history_texts = [m[1] for m in filtered_thread]
             matches, note = search_roms_or_kernels(
                 text,
                 reply_to_text=reply_to_text,
@@ -2031,7 +2162,7 @@ def handle_group_message(message):
                 deliver_file(message, matches[0], note)
                 return
 
-        # 2. Build multi-turn context and mode
+        # Build multi-turn context and mode
         clean_text = sanitize_for_ai(text)
         user_is_master = is_sender_master(message)
 
@@ -2043,10 +2174,11 @@ def handle_group_message(message):
 
         mode = pick_mode(clean_text, is_boss_roast=is_boss_roast)
 
-        transcript = "\n".join(f"{u}: {m}" for u, m in recent_history)
         parts = []
-        if transcript:
-            parts.append(f"Recent chat:\n{transcript}\n")
+        # Format the isolated talk thread
+        if filtered_thread:
+            thread_lines = "\n".join(f"{u}: {m}" for u, m in filtered_thread)
+            parts.append(f"Conversation thread with {user_name} (oldest first):\n{thread_lines}\n")
 
         if is_boss_roast and message.reply_to_message:
             # Boss ordered to roast the replied-to person
@@ -2093,8 +2225,18 @@ def handle_group_message(message):
             if not reply:
                 reply = "Samajh nahi aaya, ek baar clear likh."
 
-            bot.reply_to(message, reply)
-            save_chat_message(chat_id, "Flash", reply)
+            sent_msg = bot.reply_to(message, reply)
+            bot_id = bot_info.id
+            sent_msg_id = getattr(sent_msg, 'message_id', None)
+            save_chat_message(
+                chat_id=chat_id,
+                user_name="Flash",
+                text=reply,
+                user_id=bot_id,
+                message_id=sent_msg_id,
+                reply_to_msg_id=message_id,
+                reply_to_user_id=user_id
+            )
         except Exception as e:
             logging.error(f"Error answering user: {e}")
             bot.reply_to(message, "Samajh nahi aaya, ek baar clear likh.")
