@@ -55,9 +55,9 @@ else:
     OPENROUTER_KEYS = []
 
 GROQ_MODELS = [
-    "openai/gpt-oss-120b",
-    "qwen/qwen3.8-27b",
-    "openai/gpt-oss-20b"
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-120b"
 ]
 
 BOT_NAMES = ["flash"]
@@ -65,15 +65,14 @@ CHANNEL_USERNAME = "rm6785dumppAss"
 CHANNEL_ID = -1003087244808
 
 OPENROUTER_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "google/gemini-2.0-flash-lite-preview-02-05:free",
     "meta-llama/llama-3.3-70b-instruct:free",
+    "google/gemini-2.0-flash-lite-preview-02-05:free",
     "openrouter/free"
 ]
 
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-3.8-flash"
+    "gemini-1.5-flash",
+    "gemini-2.0-flash"
 ]
 
 CONTEXT_MESSAGE_LIMIT = 15
@@ -880,6 +879,14 @@ def is_explicit_file_request(text, reply_to_text=None):
     return False
 
 
+def wants_file(text):
+    t = normalize_text(text)
+    give = re.search(r'\b(give|send|download|link|de|do|dedo|chahiye|bhejo|share|nikal|nikalo)\b', t)
+    tech = re.search(r'\b(rom|kernel|recovery|twrp|pbrp|orangefox|ofox|shrp|zip|boot\s*img)\b', t)
+    brand = any(re.search(rf'\b{re.escape(b)}\b', t) for b in KNOWN_BRANDS)
+    return bool(tech or (brand and (give or len(t.split()) <= 3)))
+
+
 def search_roms_or_kernels(query_text, reply_to_text=None, history_texts=[], force_search=False):
     """
     Precision Search Engine:
@@ -1117,14 +1124,15 @@ def should_respond(message, bot_username):
     return False
 
 
-# ============ HARD FAMILY WORD FILTER ============
+# ============ HARD HINDI FAMILY & ABUSIVE GAALI FILTER ============
+# English Gen-Z parent banter ('your mom', 'ask your dad', 'mum', 'dada') is allowed in English.
+# Hindi family insults (maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad') are strictly banned.
 FAMILY_BANNED_PATTERNS = [
-    r'\bmummy\b', r'\bmomm?y\b', r'\bmom\b', r'\bmaa\b', r'\bmata\b', r'\bmother\b',
-    r'\bammi\b', r'\bamma\b', r'\bbaap\b', r'\bpapa\b', r'\bdad\b', r'\bdaddy\b',
-    r'\bfather\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b', r'\bwalid\b', r'\bwalida\b',
-    r'\bparivaar\b', r'\bkhandaan\b', r'\bfamily\b', r'\bparents\b',
-    r'\bjanani\b', r'\bjanak\b', r'\bgharwale\b', r'\bgharwalon\b',
-    r'\b(teri|tere|apni|apne)\s+(maa|baap|mummy|papa|ammi|abbu|mom|dad)\b',
+    r'\bmaa\b', r'\bmata\b', r'\bbaap\b', r'\bpapa\b', r'\bmummy\b',
+    r'\bammi\b', r'\bamma\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b',
+    r'\bwalid\b', r'\bwalida\b', r'\bparivaar\b', r'\bkhandaan\b',
+    r'\b(teri|tere|tera|apni|apne|tumhare)\s+(mom|dad|mum|dada|daddy|mother|father|maa|baap|mummy|papa|ammi|abbu)\b',
+    r'\b(bhenchod|bhen\s*chod|madarchod|madar\s*chod|bc|mc|mkc|bhosdike)\b',
 ]
 
 SAFE_CLEAN_ROASTS = [
@@ -1142,87 +1150,53 @@ def sanitize_for_ai(txt):
         return ""
     return re.sub(r"\bnigg[ae]r?s?\b", "guy", str(txt), flags=re.IGNORECASE)
 
-SYSTEM_PROMPT = """You are Flash, a regular, street-smart Indian guy in an Android Telegram group.
-You talk in natural, casual Roman Hinglish.
-Your boss is Billu bhai / Void (@darkdevil7773b). You always respect him and back him up.
+SYSTEM_PROMPT = """You are Flash, a member of an Android ROM and custom-recovery Telegram group (Realme 6/7, RM6785). You are a sharp, quick-witted Indian guy in his 20s who types casual Roman Hinglish like a real group chat.
+Your boss is Billu bhai (Void, @darkdevil7773b). Always respect him and back him up.
 
-HOW TO TALK:
-1. NO FORCED JOKES OR METAPHORS:
-   - Absolutely no standup comedy, rhyming, or WhatsApp-style forward jokes.
-   - Never invent random objects or analogies (no cycle, chain, chai, tapri, popcorn, keyboard thak gaya, hawa me udna).
-   - Never use template phrases like 'itna X hai ki Y'.
+YOU RECEIVE: recent chat (oldest first), who is replying to whom, the sender, the exact message, and a MODE: ROAST, ANSWER or CHAT.
 
-2. REAL BANTER & ROASTS:
-   - Call out the exact silly thing the target said or did using dry sarcasm.
-   - If someone asks an obvious question, hit back with simple sarcasm.
-   - If someone says random nonsense, tell them to stop trying to sound cool.
-   - If Boss says 'ask flash' or passes a tech question, answer it directly and normally.
-   - If someone compliments you, say thanks nicely.
+BEFORE REPLYING
+- Work out what the person actually means. If the message is short ("Kaha hain", "ye kya hai"), use the message they replied to and the last few lines. Answer THAT, not the literal words.
+- Never invent facts, files, links or steps. If you don't know, say so in one line.
 
-3. STRICT ZERO TOLERANCE - NO FAMILY WORDS:
-   - Absolutely NEVER mention parents, mother, father, family (no mummy, maa, baap, papa, mom, dad, ammi, abbu, parivaar, khandaan).
+MODE ROAST
+- Pick ONE specific thing the target said or did (lazy question, no device info, wrong zip, begging for a ROM, spamming, pointless message) and hit it head-on.
+- Brutal but sensible: the line must make complete sense on its own, and the target should instantly see why it fits them. Blunt truth plus dry sarcasm beats a fancy comparison.
+- Attack their silly words and behaviour.
+- PARENT / FAMILY ROAST RULES:
+  * Light Gen-Z style parent roasts (e.g. 'your mom', 'ask your dad', 'even your mom knows how to flash this', 'bro\'s dad went for milk') ARE ALLOWED, but MUST BE IN ENGLISH ONLY.
+  * STRICTLY NEVER use Hindi family words or abuses (absolutely NO maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad'). Keep any family punchlines purely in English.
+  * Never attack religion, caste, looks, disability, or personal circumstances.
+- Vary your openings. Do not start every line with "Bhai". Never use the pattern "itna X hai ki Y".
 
-4. FORMAT:
-   - Strictly 1 short line (under 15 words).
-   - Casual street Roman Hinglish only."""
+MODE ANSWER
+- Direct and useful, short. Light dry humour is fine. Don't roast someone who asked politely.
+- If they want a ROM, kernel or recovery file, tell them to use /give <name> (example: /give pbrp).
+
+MODE CHAT
+- Casual and natural. A compliment gets a simple thanks.
+
+STYLE
+- Roman Hinglish only. 1 or 2 sentences, max 25 words. At most one emoji. No quotes around the reply, no explanation of what you are doing.
+- Output ONLY the message text."""
 
 FEW_SHOTS = [
-    {
-        "role": "user",
-        "content": "Target: Aniket\nMessage: .ok\nBoss Command: Flash roast him\nTask: Roast Aniket",
-    },
-    {
-        "role": "assistant",
-        "content": "Bhai pure din me bas itna hi type karne ka dum bacha tha kya?",
-    },
-    {
-        "role": "user",
-        "content": "Target: NI\nMessage: I gotta flash it?\nBoss Command: None\nTask: Reply to NI",
-    },
-    {
-        "role": "assistant",
-        "content": "Nahi phone pe aarti utarni hai, flash hi karega na aur kya karega.",
-    },
-    {
-        "role": "user",
-        "content": "Target: Sid\nMessage: But I want to discuss\nBoss Command: None\nTask: Reply to Sid",
-    },
-    {
-        "role": "assistant",
-        "content": "Yahan koi panchayat nahi chal rahi jo tujhe faltu discussion karna hai.",
-    },
-    {
-        "role": "user",
-        "content": "Target: Sid\nMessage: Ok tell me why is Tel Aviv not my father yet\nBoss Command: None\nTask: Reply to Sid",
-    },
-    {
-        "role": "assistant",
-        "content": "Kuch bhi bol ke edgy banne ka try mat kar, bohot ajeeb lag raha hai.",
-    },
-    {
-        "role": "user",
-        "content": "Target: Jack Parrot\nMessage: Billeshwar is axion sm...\nBoss Command: ask flash\nTask: Answer Jack Parrot",
-    },
-    {
-        "role": "assistant",
-        "content": "Axion smooth hai bhai, daily use ke liye bina soche flash kar sakta hai.",
-    },
-    {
-        "role": "user",
-        "content": "Target: Boss (Billu bhai)\nMessage: kya scene hai flash\nBoss Command: None\nTask: Reply respectfully and casually to Boss Billu bhai",
-    },
-    {
-        "role": "assistant",
-        "content": "Sab badhiya Billu bhai, group me sab control me hai.",
-    },
-    {
-        "role": "user",
-        "content": "Target: Aniket\nMessage: nice bot flash well done\nBoss Command: None\nTask: Reply to Aniket",
-    },
-    {
-        "role": "assistant",
-        "content": "Shukriya bhai, bas Billu bhai ka setup aur aap sabka support hai.",
-    },
+    {"role": "user", "content": "Sender: Aniket\nMessage: .ok\nMode: ROAST"},
+    {"role": "assistant", "content": "'.ok' likhne ke liye poora notification bhej diya group ko? Ya kuch bol, ya chup reh."},
+    {"role": "user", "content": "Sender: Rohit\nMessage: rom do\nMode: ROAST"},
+    {"role": "assistant", "content": "Kaunsa phone, kaunsa ROM, kaunsa version? Poora sawaal likhne mein mehnat lagti hai kya?"},
+    {"role": "user", "content": "Sender: Aman\nMessage: can i flash without unlocking bootloader\nMode: ROAST"},
+    {"role": "assistant", "content": "Even your mom knows you have to unlock the bootloader first. Dimaag ghar pe bhool ke aaya hai kya?"},
+    {"role": "user", "content": "Sender: Vicky\nMessage: mujhe recovery flash karke do jaldi teamviewer pe\nMode: ROAST"},
+    {"role": "assistant", "content": "Who do you think works here, your dad? /give recovery likh aur chupchap khud flash kar."},
+    {"role": "user", "content": "Sender: Sid\nMessage: bootloop ho gaya help\nMode: ANSWER"},
+    {"role": "assistant", "content": "Pehle bata kaunsa zip aur kaunsi recovery flash ki. Bina info ke koi kuch nahi bata sakta."},
+    {"role": "user", "content": "Sender: Light Angel\nReplying to Flash: 'Yeh description bas simple instructions hai'\nMessage: Kaha hain\nMode: ANSWER"},
+    {"role": "assistant", "content": "Description bot ki profile mein hai, uska naam tap karke upar dekh le."},
+    {"role": "user", "content": "Sender: Jack\nMessage: pbrp recovery\nMode: ANSWER"},
+    {"role": "assistant", "content": "/give pbrp likh, file aur link dono mil jayenge."},
+    {"role": "user", "content": "Sender: Boss (Billu bhai)\nMessage: kya scene hai flash\nMode: CHAT"},
+    {"role": "assistant", "content": "Sab badhiya Billu bhai, aap bolo kuch karna hai?"},
 ]
 
 def contains_family_words(text):
@@ -1235,7 +1209,7 @@ def contains_family_words(text):
             return True
     return False
 
-def try_groq(system_prompt, user_prompt, few_shots=None):
+def try_groq(system_prompt, user_prompt, few_shots=None, mode="CHAT"):
     """Priority 1: Ultra-fast Groq LPU inference (~0.3s response)."""
     for model in GROQ_MODELS:
         messages = [{"role": "system", "content": system_prompt}]
@@ -1243,12 +1217,17 @@ def try_groq(system_prompt, user_prompt, few_shots=None):
             messages.extend(few_shots)
         messages.append({"role": "user", "content": user_prompt})
 
+        temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": 0.4,
-            "max_tokens": 250
+            "temperature": temp,
+            "top_p": 0.9,
+            "max_tokens": 400
         }
+        if any(rm in model for rm in ["gpt-oss", "o1", "o3", "r1"]):
+            payload["reasoning_effort"] = "low"
+
         try:
             t0 = time.time()
             res = http_session.post(
@@ -1258,7 +1237,7 @@ def try_groq(system_prompt, user_prompt, few_shots=None):
                     "Content-Type": "application/json"
                 },
                 json=payload,
-                timeout=4
+                timeout=8
             )
             if res.status_code == 200:
                 result = res.json()
@@ -1276,7 +1255,7 @@ def try_groq(system_prompt, user_prompt, few_shots=None):
             logging.warning(f"Groq [{model}] error: {e}")
     return None
 
-def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None):
+def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None, mode="CHAT"):
     key_short = api_key[:12] + "..." + api_key[-4:]
     for model in OPENROUTER_MODELS:
         messages = [{"role": "system", "content": system_prompt}]
@@ -1284,12 +1263,13 @@ def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None):
             messages.extend(few_shots)
         messages.append({"role": "user", "content": user_prompt})
 
+        temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
         payload = {
             "model": model,
             "reasoning": {"exclude": True},
             "messages": messages,
-            "temperature": 0.4,
-            "max_tokens": 200
+            "temperature": temp,
+            "max_tokens": 400
         }
         try:
             t0 = time.time()
@@ -1297,7 +1277,7 @@ def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None):
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
-                timeout=5
+                timeout=10
             )
             if res.status_code == 200:
                 result = res.json()
@@ -1309,13 +1289,13 @@ def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None):
                     logging.info(f"⚡ Replied via OpenRouter [{key_short}] ({model}) in {dt:.2f}s")
                     return cleaned
             elif res.status_code == 429:
-                logging.warning(f"OpenRouter [{key_short}] 429 rate limit reached. Rotating...")
+                logging.warning(f"OpenRouter [{key_short}] hit rate limit. Trying next key...")
                 break
         except Exception as e:
-            logging.warning(f"OpenRouter [{key_short}] ({model}) error: {e}")
+            logging.warning(f"OpenRouter [{key_short}] error: {e}")
     return None
 
-def try_gemini(system_prompt, user_prompt, few_shots=None):
+def try_gemini(system_prompt, user_prompt, few_shots=None, mode="CHAT"):
     contents = []
     if few_shots:
         for fs in few_shots:
@@ -1323,16 +1303,17 @@ def try_gemini(system_prompt, user_prompt, few_shots=None):
             contents.append({"role": role, "parts": [{"text": fs["content"]}]})
     contents.append({"role": "user", "parts": [{"text": user_prompt}]})
 
+    temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
-        "generationConfig": {"maxOutputTokens": 150, "temperature": 0.4}
+        "generationConfig": {"maxOutputTokens": 400, "temperature": temp}
     }
     for model in GEMINI_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
         try:
             t0 = time.time()
-            res = http_session.post(url, json=payload, timeout=6)
+            res = http_session.post(url, json=payload, timeout=10)
             if res.status_code == 200:
                 data = res.json()
                 parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -1352,32 +1333,29 @@ def try_gemini(system_prompt, user_prompt, few_shots=None):
             logging.warning(f"Gemini ({model}) error: {e}")
     return None
 
-def call_ai(system_prompt, user_prompt, few_shots=None):
+def call_ai(system_prompt, user_prompt, few_shots=None, mode="CHAT"):
     """
     Multi-Tier AI Pipeline:
     1. Groq (PRIORITY #1: Ultra-fast ~0.3s responses, 14,400 daily requests)
     2. OpenRouter (PRIORITY #2: 4x Accounts Pool on Groq limit/busy)
     3. Google Gemini Studio (PRIORITY #3: Reliable Fallback)
     """
-    # 1. Primary: Groq LPU
-    reply = try_groq(system_prompt, user_prompt, few_shots=few_shots)
+    reply = try_groq(system_prompt, user_prompt, few_shots=few_shots, mode=mode)
     if reply:
         return reply
 
-    # 2. Secondary: OpenRouter Pool (shuffled across 4 keys)
     shuffled_keys = list(OPENROUTER_KEYS)
     random.shuffle(shuffled_keys)
     for key in shuffled_keys:
-        reply = try_openrouter_key(key, system_prompt, user_prompt, few_shots=few_shots)
+        reply = try_openrouter_key(key, system_prompt, user_prompt, few_shots=few_shots, mode=mode)
         if reply:
             return reply
 
-    # 3. Ultimate Fallback: Google Gemini Studio
-    reply = try_gemini(system_prompt, user_prompt, few_shots=few_shots)
+    reply = try_gemini(system_prompt, user_prompt, few_shots=few_shots, mode=mode)
     if reply:
         return reply
 
-    raise RuntimeError("All AI providers (Groq, OpenRouter, Gemini) exhausted")
+    return None
 
 @bot.channel_post_handler(content_types=['document', 'text', 'audio', 'video'])
 def handle_channel_post(message):
@@ -1967,26 +1945,7 @@ def handle_give_command(message):
     )
 
     if matches:
-        best = matches[0]
-        cap = best.get('caption', '').strip()
-        details = f"\n_{cap}_" if cap else ""
-        prefix = f"{version_note}\n\n" if version_note else ""
-        reply_msg = f"{prefix}📦 *{best['name']}*{details}\n🔗 [Download Post in Channel]({best['link']})"
-
-        try:
-            bot.reply_to(message, reply_msg, parse_mode="Markdown")
-        except Exception:
-            bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
-
-        try:
-            bot.copy_message(
-                chat_id=chat_id,
-                from_chat_id=f"@{CHANNEL_USERNAME}",
-                message_id=best['message_id']
-            )
-            logging.info(f"⚡ Successfully delivered file #{best['message_id']} via /give command to {user_name}!")
-        except Exception as copy_err:
-            logging.info(f"Could not copy directly ({copy_err}), link delivered.")
+        deliver_file(message, matches[0], version_note)
     else:
         term = query or "is topic"
         bot.reply_to(
@@ -1995,6 +1954,40 @@ def handle_give_command(message):
             "Thoda specific naam likh ke try kar, jaise: `/give axion` ya `/give pixelos`",
             parse_mode="Markdown"
         )
+
+
+def deliver_file(message, best, details=""):
+    chat_id = message.chat.id
+    user_name = message.from_user.first_name or "Friend"
+    cap = best.get('caption', '').strip()
+    cap_details = f"\n_{cap}_" if cap else ""
+    prefix = f"{details}\n\n" if details else ""
+    reply_msg = f"{prefix}📦 *{best['name']}*{cap_details}\n🔗 [Download Post in Channel]({best['link']})"
+
+    try:
+        bot.reply_to(message, reply_msg, parse_mode="Markdown")
+    except Exception:
+        bot.reply_to(message, f"{prefix}📦 {best['name']}\n🔗 {best['link']}")
+
+    try:
+        bot.copy_message(
+            chat_id=chat_id,
+            from_chat_id=f"@{CHANNEL_USERNAME}",
+            message_id=best['message_id']
+        )
+        logging.info(f"⚡ Successfully delivered file #{best['message_id']} to {user_name}!")
+    except Exception as copy_err:
+        logging.info(f"Could not copy directly ({copy_err}), link delivered.")
+
+
+def pick_mode(text, is_boss_roast=False):
+    t = (text or "").lower()
+    if is_boss_roast or re.search(r'\b(roast|pel|baja|bezzati)\b', t):
+        return "ROAST"
+    if "?" in t or re.search(r'\b(kya|kaise|kyun|kaha|kaun|how|why|what|where|which|help|bata|btao|batao|konsa|kon)\b', t):
+        return "ANSWER"
+    return "CHAT"
+
 
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
@@ -2013,75 +2006,72 @@ def handle_group_message(message):
 
         # Get replied-to message text if any
         reply_to_text = None
+        rep_name = "Someone"
+        rep_text = ""
         if message.reply_to_message:
             reply_to_text = message.reply_to_message.caption or message.reply_to_message.text or ""
+            rep_user = message.reply_to_message.from_user
+            if rep_user:
+                rep_name = rep_user.first_name or "Someone"
+            rep_text = sanitize_for_ai(reply_to_text)
 
-        # Fetch recent chat context for follow-up detection
-        recent_history = get_recent_chat_history(chat_id, limit=4)
+        # Fetch recent chat context (8 lines, oldest first)
+        recent_history = get_recent_chat_history(chat_id, limit=8)
         history_texts = [m[1] for m in recent_history if m[1] != text]
 
-        # CONVERSATIONAL BANTER / ROASTING (CONTEXTUAL, DRY SARCASM & NO FAKE OBJECTS)
+        # 1. Route file requests before the AI
+        if wants_file(text):
+            matches, note = search_roms_or_kernels(
+                text,
+                reply_to_text=reply_to_text,
+                history_texts=history_texts,
+                force_search=True
+            )
+            if matches:
+                deliver_file(message, matches[0], note)
+                return
+
+        # 2. Build multi-turn context and mode
         clean_text = sanitize_for_ai(text)
         user_is_master = is_sender_master(message)
 
-        target_name = user_name
-        target_message = clean_text
-        boss_command = "None"
-        task_desc = f"Reply to {user_name}"
+        is_boss_roast = False
+        if user_is_master and message.reply_to_message:
+            t_low = (text or "").lower()
+            if any(w in t_low for w in ["roast", "pel", "kro", "baja"]):
+                is_boss_roast = True
 
-        if message.reply_to_message:
-            rep_user = message.reply_to_message.from_user
-            rep_name = rep_user.first_name if rep_user else "Someone"
-            rep_text = sanitize_for_ai(message.reply_to_message.caption or message.reply_to_message.text or "")
+        mode = pick_mode(clean_text, is_boss_roast=is_boss_roast)
 
-            if user_is_master:
-                t_lower = (text or "").lower()
-                if any(w in t_lower for w in ["ask flash", "puch flash", "bol flash"]):
-                    target_name = rep_name
-                    target_message = rep_text
-                    boss_command = "ask flash"
-                    task_desc = f"Answer {rep_name} about their question/topic directly"
-                elif any(w in t_lower for w in ["roast", "pel", "kro", "baja"]):
-                    target_name = rep_name
-                    target_message = rep_text
-                    boss_command = "Flash roast him"
-                    task_desc = f"Roast {rep_name} directly on their message"
-                else:
-                    target_name = "Boss (Billu bhai)"
-                    target_message = clean_text
-                    boss_command = "None"
-                    task_desc = "Reply respectfully and casually to Boss Billu bhai"
-            else:
-                t_lower = (text or "").lower()
-                if any(w in t_lower for w in ["roast", "pel", "kro", "baja"]):
-                    target_name = rep_name
-                    target_message = rep_text
-                    boss_command = "None"
-                    task_desc = f"Roast {rep_name} directly on their message"
-                else:
-                    target_name = user_name
-                    target_message = f"{clean_text} (In reply to {rep_name}: '{rep_text}')"
-                    boss_command = "None"
-                    task_desc = f"Reply to {user_name}"
+        transcript = "\n".join(f"{u}: {m}" for u, m in recent_history)
+        parts = []
+        if transcript:
+            parts.append(f"Recent chat:\n{transcript}\n")
+
+        if is_boss_roast and message.reply_to_message:
+            # Boss ordered to roast the replied-to person
+            parts.append(f"Replying to {rep_name}: '{rep_text}'")
+            parts.append(f"Sender: {rep_name}")
+            parts.append(f"Message: {rep_text}")
+            parts.append("Note: Boss (Billu bhai) ordered you to roast this person.")
+            parts.append(f"Mode: ROAST")
         else:
-            if user_is_master:
-                target_name = "Boss (Billu bhai)"
-                target_message = clean_text
-                boss_command = "None"
-                task_desc = "Reply respectfully and casually to Boss Billu bhai"
-            else:
-                target_name = user_name
-                target_message = clean_text
-                boss_command = "None"
-                task_desc = f"Reply to {user_name}"
+            if message.reply_to_message and rep_text:
+                parts.append(f"Replying to {rep_name}: '{rep_text}'")
+            sender_label = "Boss (Billu bhai)" if user_is_master else user_name
+            parts.append(f"Sender: {sender_label}")
+            parts.append(f"Message: {clean_text}")
+            parts.append(f"Mode: {mode}")
 
-        user_payload = f"Target: {target_name}\nMessage: {target_message}\nBoss Command: {boss_command}\nTask: {task_desc}"
+        user_payload = "\n".join(parts)
 
         try:
-            reply = call_ai(SYSTEM_PROMPT, user_payload, few_shots=FEW_SHOTS)
+            reply = call_ai(SYSTEM_PROMPT, user_payload, few_shots=FEW_SHOTS, mode=mode)
 
             def has_cliche_or_bad(txt):
-                t_low = (txt or "").lower()
+                if not txt:
+                    return True
+                t_low = txt.lower()
                 if contains_family_words(txt):
                     return True
                 if re.search(r"\bitn[ai]\s+\w+\s+hai\s+ki\b", t_low):
@@ -2093,18 +2083,21 @@ def handle_group_message(message):
                 return False
 
             if has_cliche_or_bad(reply):
-                logging.warning(f"AI response triggered guard: '{reply}'. Regenerating...")
-                retry_payload = f"{user_payload}\n\n[CRITICAL: Reply had banned words or nonsense template. Reply in 1 short dry sarcastic line under 15 words in Roman Hinglish:]"
-                reply = call_ai(SYSTEM_PROMPT, retry_payload, few_shots=FEW_SHOTS)
+                logging.warning(f"AI response triggered guard: '{reply}'. Retrying...")
+                retry_payload = f"{user_payload}\n\nYour previous reply '{reply}' was rejected (banned Hindi family words, abusive slurs, or generic template). Rewrite it: specific to the message, sensible (English Gen-Z parent jokes allowed, strictly no Hindi family words)."
+                reply = call_ai(SYSTEM_PROMPT, retry_payload, few_shots=FEW_SHOTS, mode=mode)
                 if has_cliche_or_bad(reply):
-                    logging.warning("AI still triggered guard. Using clean fallback.")
-                    reply = random.choice(SAFE_CLEAN_ROASTS)
+                    logging.warning("AI still triggered guard. Using clean contextual fallback.")
+                    reply = "Samajh nahi aaya, ek baar clear likh."
+
+            if not reply:
+                reply = "Samajh nahi aaya, ek baar clear likh."
 
             bot.reply_to(message, reply)
             save_chat_message(chat_id, "Flash", reply)
         except Exception as e:
             logging.error(f"Error answering user: {e}")
-            bot.reply_to(message, "Dimag ka fuse udd gaya ek second ke liye, dubara pooch!")
+            bot.reply_to(message, "Samajh nahi aaya, ek baar clear likh.")
 
 if __name__ == "__main__":
     bot_info = bot.get_me()
