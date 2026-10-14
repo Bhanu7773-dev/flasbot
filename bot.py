@@ -1251,23 +1251,25 @@ def sanitize_for_ai(txt):
 SYSTEM_PROMPT = """You are Flash, a member of an Android ROM and custom-recovery Telegram group (Realme 6/7, RM6785). You are a sharp, quick-witted Indian guy in his 20s who types casual Roman Hinglish like a real group chat.
 Your boss is Billu bhai (Void, @darkdevil7773b). Always respect him and back him up.
 
-YOU RECEIVE: exact conversation thread with this specific person (oldest first), who is replying to whom, the sender, the exact message, and a MODE: ROAST, ANSWER or CHAT.
+YOU RECEIVE: recent chat (oldest first), who is replying to whom, the sender, the exact message, and a MODE: ROAST, ANSWER or CHAT.
+
+AWARENESS
+- You can see the recent chat. If someone asks "kya bola", "pehle kya bola", "kisne kya kaha", answer from the chat above. Quote or summarise the real lines, never guess.
+- For ROAST, use ONLY the target's real messages given to you. If none are given, say so. Never invent a fact about a person.
+- Reply ONLY in Roman Hinglish. Never switch to English, even for jokes.
+- A Boss message that says "roast me" means a short, friendly self-roast of the Boss based on his own messages. Keep respect.
 
 BEFORE REPLYING
-- Work out what the person actually means.
-- THREAD CONTEXT & MEMORY:
-  * You are provided with the EXACT previous conversation thread between you and this specific person.
-  * If the user refers to previous lines ("kya bola upr", "iske pehle kya bola", "pehle kya bola tha", "repeat kar", "kisko bola", "what did you say earlier"), examine the earlier turns in the conversation thread and answer accurately based on what was ACTUALLY said earlier.
-  * Never repeat the immediate reply-to message if they ask what you said BEFORE it; trace backwards to the previous message in the thread.
+- Work out what the person actually means. If the message is short ("Kaha hain", "ye kya hai"), use the message they replied to and the last few lines. Answer THAT, not the literal words.
 - Never invent facts, files, links or steps. If you don't know, say so in one line.
 
 MODE ROAST
-- Pick ONE specific thing the target said or did (lazy question, no device info, wrong zip, begging for a ROM, spamming, pointless message) and hit it head-on.
+- Pick ONE specific thing the target said or did from their recent messages and hit it head-on.
 - Brutal but sensible: the line must make complete sense on its own, and the target should instantly see why it fits them. Blunt truth plus dry sarcasm beats a fancy comparison.
-- Attack their silly words and behaviour.
+- Attack their words and behaviour only.
 - PARENT / FAMILY ROAST RULES:
-  * Light Gen-Z style parent roasts (e.g. 'your mom', 'ask your dad', 'even your mom knows how to flash this', 'bro\'s dad went for milk') ARE ALLOWED, but MUST BE IN ENGLISH ONLY.
-  * STRICTLY NEVER use Hindi family words or abuses (absolutely NO maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad'). Keep any family punchlines purely in English.
+  * Light Gen-Z style parent roasts (e.g. 'your mom', 'ask your dad') are allowed, but strictly in English only.
+  * STRICTLY NEVER use Hindi family words or abuses (no maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad').
   * Never attack religion, caste, looks, disability, or personal circumstances.
 - Vary your openings. Do not start every line with "Bhai". Never use the pattern "itna X hai ki Y".
 
@@ -1287,8 +1289,10 @@ FEW_SHOTS = [
     {"role": "assistant", "content": "'.ok' likhne ke liye poora notification bhej diya group ko? Ya kuch bol, ya chup reh."},
     {"role": "user", "content": "Sender: Rohit\nMessage: rom do\nMode: ROAST"},
     {"role": "assistant", "content": "Kaunsa phone, kaunsa ROM, kaunsa version? Poora sawaal likhne mein mehnat lagti hai kya?"},
-    {"role": "user", "content": "Conversation thread with Void (oldest first):\nVoid: flash roast me\nFlash: Billu bhai roast maang rahe ho aur khud hi hi flash likh rahe ho, keyboard thak gaya tumse!\nVoid: flash roast anjali\nFlash: Anjali's ROM is so ancient, even the bootloader sighs and says I need a coffee break.\nVoid: kya bola upr tumne\nFlash: Maine Anjali ke ROM ko itna purana bataya ki bootloader bhi coffee break maang raha tha.\n\nReplying to Flash: 'Maine Anjali ke ROM ko itna purana bataya ki bootloader bhi coffee break maang raha tha.'\nSender: Boss (Billu bhai)\nMessage: iske pehle kay bolra tha\nMode: ANSWER"},
-    {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai roast maang rahe ho aur khud hi hi flash likh rahe ho, keyboard thak gaya tumse!'"},
+    {"role": "user", "content": "Recent chat (oldest first):\nBoss (Billu bhai): flash roast me\nFlash: Billu bhai, roast maang rahe ho aur khud hi 'hi flash' likh rahe ho, thoda dimaag laga lo!\nBoss (Billu bhai): flash roast anjali\nFlash: Anjali ne group me ek message nahi bheja, hawa me kis baat pe pelu usko?\nBoss (Billu bhai): kya bola upr tumne\nFlash: Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.\n\nThe sender is replying to Flash's message: 'Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.'\nSender: Boss (Billu bhai)\nLatest message to answer: iske pehle kay bolra tha\nMode: ANSWER"},
+    {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai, roast maang rahe ho aur khud hi hi flash likh rahe ho, thoda dimaag laga lo!'"},
+    {"role": "user", "content": "Sender: Boss (Billu bhai)\nLatest message to answer: flash roast anjali\nMode: ROAST\nTarget: Anjali\nTheir recent messages (use these as material):\n- bhai charger mil nahi raha switch on kaise karu\n- 1% battery pe pubg chalu kiya"},
+    {"role": "assistant", "content": "1% battery pe PUBG khol ke baithi hai aur bolti hai charger nahi mil raha, phone blast karwane ka plan hai kya?"},
     {"role": "user", "content": "Sender: Aman\nMessage: can i flash without unlocking bootloader\nMode: ROAST"},
     {"role": "assistant", "content": "Even your mom knows you have to unlock the bootloader first. Dimaag ghar pe bhool ke aaya hai kya?"},
     {"role": "user", "content": "Sender: Vicky\nMessage: mujhe recovery flash karke do jaldi teamviewer pe\nMode: ROAST"},
@@ -2093,6 +2097,48 @@ def pick_mode(text, is_boss_roast=False):
     return "CHAT"
 
 
+def get_user_messages(chat_id, name_query=None, user_id=None, limit=6):
+    """Last messages from a person, matched by user_id or name. Used as roast material."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            if user_id:
+                rows = conn.execute(
+                    """SELECT user_name, message_text FROM messages
+                       WHERE chat_id=? AND user_name != 'Flash'
+                       AND user_id = ?
+                       ORDER BY id DESC LIMIT ?""",
+                    (chat_id, user_id, limit)).fetchall()
+            elif name_query:
+                rows = conn.execute(
+                    """SELECT user_name, message_text FROM messages
+                       WHERE chat_id=? AND user_name != 'Flash'
+                       AND lower(user_name) LIKE ?
+                       ORDER BY id DESC LIMIT ?""",
+                    (chat_id, f"%{name_query.lower()}%", limit)).fetchall()
+            else:
+                return []
+        return rows[::-1]
+    except Exception:
+        return []
+
+
+def resolve_roast_target(text, message, user_name):
+    t = (text or "").lower()
+    # 1. Reply to someone: that person
+    if message.reply_to_message and message.reply_to_message.from_user:
+        u = message.reply_to_message.from_user
+        return (u.first_name or "Someone"), (u.first_name or ""), u.id
+    # 2. "roast me"
+    if re.search(r'\broast\s+me\b', t):
+        uid = message.from_user.id if message.from_user else None
+        return user_name, user_name, uid
+    # 3. "roast anjali" or "flash roast anjali"
+    m = re.search(r'\b(?:roast|pel|baja)\s+(\w+)', t)
+    if m and m.group(1) not in ("him", "her", "isko", "usko", "me"):
+        return m.group(1).title(), m.group(1), None
+    return None, None, None
+
+
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
     chat_id = message.chat.id
@@ -2133,25 +2179,13 @@ def handle_group_message(message):
         logging.info(f"Bot invoked by {user_name}: {text}")
         bot.send_chat_action(chat_id, "typing")
 
-        # Fetch conversation thread STRICTLY between this same user and Flash
-        thread_history = get_conversation_thread(
-            chat_id=chat_id,
-            user_id=user_id,
-            user_name=user_name,
-            reply_to_msg_id=reply_to_msg_id,
-            limit=10
-        )
-
-        # Exclude the current message from previous thread history
-        filtered_thread = []
-        for u, m in thread_history:
-            if m == text and u == user_name:
-                continue
-            filtered_thread.append((u, m))
+        clean_text = sanitize_for_ai(text)
+        user_is_master = is_sender_master(message)
 
         # Route file requests before the AI
         if wants_file(text):
-            history_texts = [m[1] for m in filtered_thread]
+            recent_for_file = get_recent_chat_history(chat_id, limit=4)
+            history_texts = [m[1] for m in recent_for_file if m[1] != text]
             matches, note = search_roms_or_kernels(
                 text,
                 reply_to_text=reply_to_text,
@@ -2162,37 +2196,33 @@ def handle_group_message(message):
                 deliver_file(message, matches[0], note)
                 return
 
-        # Build multi-turn context and mode
-        clean_text = sanitize_for_ai(text)
-        user_is_master = is_sender_master(message)
+        # Build context payload with recent chat (Fix 1 & 3)
+        transcript = "\n".join(f"{u}: {m}" for u, m in get_recent_chat_history(chat_id, 12))
+        parts = [f"Recent chat (oldest first):\n{transcript}\n"]
 
-        is_boss_roast = False
-        if user_is_master and message.reply_to_message:
-            t_low = (text or "").lower()
-            if any(w in t_low for w in ["roast", "pel", "kro", "baja"]):
-                is_boss_roast = True
+        if message.reply_to_message:
+            parts.append(f"The sender is replying to {rep_name}'s message: '{rep_text}'")
 
-        mode = pick_mode(clean_text, is_boss_roast=is_boss_roast)
+        sender = "Boss (Billu bhai)" if user_is_master else user_name
+        parts.append(f"Sender: {sender}")
+        parts.append(f"Latest message to answer: {clean_text}")
 
-        parts = []
-        # Format the isolated talk thread
-        if filtered_thread:
-            thread_lines = "\n".join(f"{u}: {m}" for u, m in filtered_thread)
-            parts.append(f"Conversation thread with {user_name} (oldest first):\n{thread_lines}\n")
-
-        if is_boss_roast and message.reply_to_message:
-            # Boss ordered to roast the replied-to person
-            parts.append(f"Replying to {rep_name}: '{rep_text}'")
-            parts.append(f"Sender: {rep_name}")
-            parts.append(f"Message: {rep_text}")
-            parts.append("Note: Boss (Billu bhai) ordered you to roast this person.")
-            parts.append(f"Mode: ROAST")
+        wants_roast = re.search(r'\b(roast|pel|baja|bezzati)\b', (text or "").lower())
+        if wants_roast:
+            mode = "ROAST"
+            tname, tquery, tuid = resolve_roast_target(text, message, user_name)
+            if tname:
+                ammo = get_user_messages(chat_id, name_query=tquery, user_id=tuid)
+                if ammo:
+                    ammo_txt = "\n".join(f"- {m}" for _, m in ammo)
+                    parts.append(f"Mode: ROAST\nTarget: {tname}\nTheir recent messages (use these as material):\n{ammo_txt}")
+                else:
+                    parts.append(f"Mode: ROAST\nTarget: {tname}\nNo recent messages from them. Do NOT invent facts about them. Say in one line that they have said nothing to roast.")
+            else:
+                parts.append("Mode: ROAST\nTarget: the sender")
         else:
-            if message.reply_to_message and rep_text:
-                parts.append(f"Replying to {rep_name}: '{rep_text}'")
-            sender_label = "Boss (Billu bhai)" if user_is_master else user_name
-            parts.append(f"Sender: {sender_label}")
-            parts.append(f"Message: {clean_text}")
+            is_question = bool(re.search(r'\?|\b(kya|kaise|kyun|kaha|kaun|bola|tha|how|why|what|where|which|help|bata|btao|batao)\b', (text or "").lower()))
+            mode = "ANSWER" if is_question else "CHAT"
             parts.append(f"Mode: {mode}")
 
         user_payload = "\n".join(parts)
@@ -2208,7 +2238,7 @@ def handle_group_message(message):
                     return True
                 if re.search(r"\bitn[ai]\s+\w+\s+hai\s+ki\b", t_low):
                     return True
-                if any(k in t_low for k in ["cycle ki chain", "chai ki tapri", "chai ki taseer"]):
+                if any(k in t_low for k in ["cycle ki chain", "chai ki tapri", "chai ki taseer", "keyboard", "thak gaya"]):
                     return True
                 if "sharam se khatam" in t_low or "battery sharam" in t_low:
                     return True
@@ -2216,7 +2246,7 @@ def handle_group_message(message):
 
             if has_cliche_or_bad(reply):
                 logging.warning(f"AI response triggered guard: '{reply}'. Retrying...")
-                retry_payload = f"{user_payload}\n\nYour previous reply '{reply}' was rejected (banned Hindi family words, abusive slurs, or generic template). Rewrite it: specific to the message, sensible (English Gen-Z parent jokes allowed, strictly no Hindi family words)."
+                retry_payload = f"{user_payload}\n\nYour previous reply '{reply}' was rejected (banned words or generic template). Rewrite it: specific to the message, sensible, Roman Hinglish."
                 reply = call_ai(SYSTEM_PROMPT, retry_payload, few_shots=FEW_SHOTS, mode=mode)
                 if has_cliche_or_bad(reply):
                     logging.warning("AI still triggered guard. Using clean contextual fallback.")
