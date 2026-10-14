@@ -1222,15 +1222,12 @@ def should_respond(message, bot_username):
     return False
 
 
-# ============ HARD HINDI FAMILY & ABUSIVE GAALI FILTER ============
-# English Gen-Z parent banter ('your mom', 'ask your dad', 'mum', 'dada') is allowed in English.
-# Hindi family insults (maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad') are strictly banned.
+# ============ HARD HINDI FAMILY FILTER (mc/bc pass freely, 'teri maa' style blocked) ============
 FAMILY_BANNED_PATTERNS = [
     r'\bmaa\b', r'\bmata\b', r'\bbaap\b', r'\bpapa\b', r'\bmummy\b',
     r'\bammi\b', r'\bamma\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b',
     r'\bwalid\b', r'\bwalida\b', r'\bparivaar\b', r'\bkhandaan\b',
-    r'\b(teri|tere|tera|apni|apne|tumhare)\s+(mom|dad|mum|dada|daddy|mother|father|maa|baap|mummy|papa|ammi|abbu)\b',
-    r'\b(bhenchod|bhen\s*chod|madarchod|madar\s*chod|bc|mc|mkc|bhosdike)\b',
+    r'\b(teri|tere|tera|apni|apne|tumhare)\s+(mom|dad|mum|dada|daddy|mother|father|maa|baap|mummy|papa|ammi|abbu)\b'
 ]
 
 SAFE_CLEAN_ROASTS = [
@@ -1264,14 +1261,12 @@ BEFORE REPLYING
 - Never invent facts, files, links or steps. If you don't know, say so in one line.
 
 MODE ROAST
-- Pick ONE specific thing the target said or did from their recent messages and hit it head-on.
-- Brutal but sensible: the line must make complete sense on its own, and the target should instantly see why it fits them. Blunt truth plus dry sarcasm beats a fancy comparison.
-- Attack their words and behaviour only.
-- PARENT / FAMILY ROAST RULES:
-  * Light Gen-Z style parent roasts (e.g. 'your mom', 'ask your dad') are allowed, but strictly in English only.
-  * STRICTLY NEVER use Hindi family words or abuses (no maa, baap, mummy, papa, ammi, abbu, khandaan, or 'teri mom/dad').
-  * Never attack religion, caste, looks, disability, or personal circumstances.
-- Vary your openings. Do not start every line with "Bhai". Never use the pattern "itna X hai ki Y".
+- You get "Message to roast" (the exact words) and maybe their other messages. Roast THOSE words only.
+- Formula: say what they wrote, then give a blunt verdict on why it is dumb, lazy or pointless. One plain sentence, max 20 words.
+- NO comparisons, similes, metaphors, proverbs or invented objects. Say the criticism directly, like a friend who is fed up.
+- Abusive language is allowed and encouraged in roasts: bc, mc, mkc, chutiya, gandu, bhosdike, lodu. Use 1 or 2 where it fits naturally, never forced.
+- Never bring in a person's parents or sisters in full sentences, religion, caste, looks, disability or anything they can't change. Attack what they said and how they behave.
+- Your line must refer to something in "Message to roast". If you can't, say you have nothing to roast.
 
 MODE ANSWER
 - Direct and useful, short. Light dry humour is fine. Don't roast someone who asked politely.
@@ -1285,18 +1280,18 @@ STYLE
 - Output ONLY the message text."""
 
 FEW_SHOTS = [
-    {"role": "user", "content": "Sender: Aniket\nMessage: .ok\nMode: ROAST"},
-    {"role": "assistant", "content": "'.ok' likhne ke liye poora notification bhej diya group ko? Ya kuch bol, ya chup reh."},
-    {"role": "user", "content": "Sender: Rohit\nMessage: rom do\nMode: ROAST"},
-    {"role": "assistant", "content": "Kaunsa phone, kaunsa ROM, kaunsa version? Poora sawaal likhne mein mehnat lagti hai kya?"},
+    {"role": "user", "content": "Sender: Billu\nMode: ROAST\nTarget: Sid\nMessage to roast: \"you are a bot you aren't even smart\""},
+    {"role": "assistant", "content": "Bot ko bot bolke genius ban raha hai, sawaal kya tha tera bc?"},
+    {"role": "user", "content": "Sender: Billu\nMode: ROAST\nTarget: Rohit\nMessage to roast: \"rom do bhai jaldi\""},
+    {"role": "assistant", "content": "Na phone ka naam, na ROM ka naam, bas 'jaldi' chahiye. Pehle sawaal likh mkc."},
+    {"role": "user", "content": "Sender: Billu\nMode: ROAST\nTarget: Aniket\nMessage to roast: \".ok\""},
+    {"role": "assistant", "content": "'.ok' likhne ke liye keyboard kholne ki zaroorat bhi nahi thi, gandu."},
     {"role": "user", "content": "Recent chat (oldest first):\nBoss (Billu bhai): flash roast me\nFlash: Billu bhai, roast maang rahe ho aur khud hi 'hi flash' likh rahe ho, thoda dimaag laga lo!\nBoss (Billu bhai): flash roast anjali\nFlash: Anjali ne group me ek message nahi bheja, hawa me kis baat pe pelu usko?\nBoss (Billu bhai): kya bola upr tumne\nFlash: Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.\n\nThe sender is replying to Flash's message: 'Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.'\nSender: Boss (Billu bhai)\nLatest message to answer: iske pehle kay bolra tha\nMode: ANSWER"},
     {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai, roast maang rahe ho aur khud hi hi flash likh rahe ho, thoda dimaag laga lo!'"},
-    {"role": "user", "content": "Sender: Boss (Billu bhai)\nLatest message to answer: flash roast anjali\nMode: ROAST\nTarget: Anjali\nTheir recent messages (use these as material):\n- bhai charger mil nahi raha switch on kaise karu\n- 1% battery pe pubg chalu kiya"},
-    {"role": "assistant", "content": "1% battery pe PUBG khol ke baithi hai aur bolti hai charger nahi mil raha, phone blast karwane ka plan hai kya?"},
     {"role": "user", "content": "Sender: Aman\nMessage: can i flash without unlocking bootloader\nMode: ROAST"},
-    {"role": "assistant", "content": "Even your mom knows you have to unlock the bootloader first. Dimaag ghar pe bhool ke aaya hai kya?"},
+    {"role": "assistant", "content": "Bootloader unlock kiye bina flash karega? Dimaag ghar pe bhool ke aaya hai kya bc?"},
     {"role": "user", "content": "Sender: Vicky\nMessage: mujhe recovery flash karke do jaldi teamviewer pe\nMode: ROAST"},
-    {"role": "assistant", "content": "Who do you think works here, your dad? /give recovery likh aur chupchap khud flash kar."},
+    {"role": "assistant", "content": "TeamViewer pe recovery flash karwayega? /give recovery likh aur chupchap khud kar gandu."},
     {"role": "user", "content": "Sender: Sid\nMessage: bootloop ho gaya help\nMode: ANSWER"},
     {"role": "assistant", "content": "Pehle bata kaunsa zip aur kaunsi recovery flash ki. Bina info ke koi kuch nahi bata sakta."},
     {"role": "user", "content": "Sender: Light Angel\nReplying to Flash: 'Yeh description bas simple instructions hai'\nMessage: Kaha hain\nMode: ANSWER"},
@@ -1325,7 +1320,7 @@ def try_groq(system_prompt, user_prompt, few_shots=None, mode="CHAT"):
             messages.extend(few_shots)
         messages.append({"role": "user", "content": user_prompt})
 
-        temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
+        temp = 0.6 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
         payload = {
             "model": model,
             "messages": messages,
@@ -1371,7 +1366,7 @@ def try_openrouter_key(api_key, system_prompt, user_prompt, few_shots=None, mode
             messages.extend(few_shots)
         messages.append({"role": "user", "content": user_prompt})
 
-        temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
+        temp = 0.6 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
         payload = {
             "model": model,
             "reasoning": {"exclude": True},
@@ -1411,7 +1406,7 @@ def try_gemini(system_prompt, user_prompt, few_shots=None, mode="CHAT"):
             contents.append({"role": role, "parts": [{"text": fs["content"]}]})
     contents.append({"role": "user", "parts": [{"text": user_prompt}]})
 
-    temp = 0.85 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
+    temp = 0.6 if mode == "ROAST" else (0.3 if mode == "ANSWER" else 0.7)
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
@@ -2097,47 +2092,99 @@ def pick_mode(text, is_boss_roast=False):
     return "CHAT"
 
 
-def get_user_messages(chat_id, name_query=None, user_id=None, limit=6):
-    """Last messages from a person, matched by user_id or name. Used as roast material."""
+ABUSE_TAGS = ["bc", "mc", "mkc", "chutiye", "gandu", "bhosdike", "lodu"]
+SIMILE_RE = re.compile(r'\b(jaise|jaisa|jaisi|like a|mantra|matlab ki)\b|itn[aei]\s+\w+\s+(hai|ho)\s+ki', re.I)
+
+NO_MATERIAL_SELF = [
+    "Pehle group me kuch dhang ka bol toh le, phir roast mangiyo.",
+    "Abhi tak ek dhang ka message nahi bheja tune, kis baat pe roast karu?",
+    "Kuch bola hi nahi tune roast karne laayak, pehle kuch type kar.",
+]
+
+NO_MATERIAL_OTHER = [
+    "{name} ne group me kuch bola hi nahi abhi tak, hawa me kis baat pe pelu usko?",
+    "Pehle {name} ko bolo group me kuch bole, bina material ke kya roast karu?",
+    "{name} ne abhi tak koi message nahi bheja, silent spectator ko kya roast karu?",
+]
+
+def useful_line(m):
+    """True if line is a substantive message, not a command or empty."""
+    if not m:
+        return False
+    m_clean = str(m).strip()
+    if m_clean.startswith(("/", "!", ".")) and len(m_clean.split()) == 1:
+        return False
+    if len(m_clean.split()) < 2 and len(m_clean) < 4:
+        return False
+    return True
+
+def find_user_name(chat_id, tquery):
+    """Finds closest matching user_name in chat history."""
+    if not tquery:
+        return None
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            if user_id:
-                rows = conn.execute(
-                    """SELECT user_name, message_text FROM messages
-                       WHERE chat_id=? AND user_name != 'Flash'
-                       AND user_id = ?
-                       ORDER BY id DESC LIMIT ?""",
-                    (chat_id, user_id, limit)).fetchall()
-            elif name_query:
-                rows = conn.execute(
-                    """SELECT user_name, message_text FROM messages
-                       WHERE chat_id=? AND user_name != 'Flash'
-                       AND lower(user_name) LIKE ?
-                       ORDER BY id DESC LIMIT ?""",
-                    (chat_id, f"%{name_query.lower()}%", limit)).fetchall()
-            else:
-                return []
-        return rows[::-1]
+            row = conn.execute(
+                """SELECT user_name FROM messages 
+                   WHERE chat_id = ? AND user_name != 'Flash' AND lower(user_name) LIKE ?
+                   ORDER BY id DESC LIMIT 1""",
+                (chat_id, f"%{tquery.lower()}%")
+            ).fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+def get_user_messages(chat_id, name_query, limit=6):
+    """Last messages from a person, matched by name. Used as roast material."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                """SELECT message_text FROM messages
+                   WHERE chat_id=? AND user_name != 'Flash'
+                   AND lower(user_name) LIKE ?
+                   ORDER BY id DESC LIMIT ?""",
+                (chat_id, f"%{name_query.lower()}%", limit)).fetchall()
+        return [r[0] for r in rows][::-1]
     except Exception:
         return []
-
 
 def resolve_roast_target(text, message, user_name):
     t = (text or "").lower()
     # 1. Reply to someone: that person
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
-        return (u.first_name or "Someone"), (u.first_name or ""), u.id
+        return (u.first_name or "Someone"), (u.first_name or "")
     # 2. "roast me"
     if re.search(r'\broast\s+me\b', t):
-        uid = message.from_user.id if message.from_user else None
-        return user_name, user_name, uid
+        return user_name, user_name
     # 3. "roast anjali" or "flash roast anjali"
     m = re.search(r'\b(?:roast|pel|baja)\s+(\w+)', t)
     if m and m.group(1) not in ("him", "her", "isko", "usko", "me"):
-        return m.group(1).title(), m.group(1), None
-    return None, None, None
+        return m.group(1).title(), m.group(1)
+    return None, None
 
+def grounded(reply, source_lines):
+    """Checks that the reply references at least one significant word from the target's real messages."""
+    if not reply or not source_lines:
+        return False
+    stop_words = {"kya", "hai", "ho", "ka", "ki", "ke", "ko", "me", "mein", "par", "se", "aur", "to", "bhi", "yeh", "woh", "the", "is", "a", "an", "and", "in", "on", "it", "to", "for", "of", "bhai", "bro", "flash"}
+    reply_lower = reply.lower()
+    for line in source_lines:
+        clean_s = str(line).strip().lower()
+        if clean_s and clean_s in reply_lower:
+            return True
+        words = re.findall(r'\b[a-zA-Z0-9_\.]{3,}\b', clean_s)
+        for w in words:
+            if w not in stop_words and w in reply_lower:
+                return True
+    return False
+
+def bad_roast(reply, source_lines):
+    """True if the roast is a simile, too long, or doesn't use their words."""
+    if not reply or SIMILE_RE.search(reply): return True
+    if len(reply.split()) > 28: return True
+    if contains_family_words(reply): return True   # blocks "teri maa" style lines; mc/bc still pass
+    return not grounded(reply, source_lines)
 
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
@@ -2162,7 +2209,7 @@ def handle_group_message(message):
             rep_name = rep_user.first_name or "Someone"
         rep_text = sanitize_for_ai(reply_to_text)
 
-    # 1. Silently record message with full thread metadata
+    # 1. Silently record all conversation
     save_chat_message(
         chat_id=chat_id,
         user_name=user_name,
@@ -2196,7 +2243,6 @@ def handle_group_message(message):
                 deliver_file(message, matches[0], note)
                 return
 
-        # Build context payload with recent chat (Fix 1 & 3)
         transcript = "\n".join(f"{u}: {m}" for u, m in get_recent_chat_history(chat_id, 12))
         parts = [f"Recent chat (oldest first):\n{transcript}\n"]
 
@@ -2209,21 +2255,60 @@ def handle_group_message(message):
 
         wants_roast = re.search(r'\b(roast|pel|baja|bezzati)\b', (text or "").lower())
         if wants_roast:
-            mode = "ROAST"
-            tname, tquery, tuid = resolve_roast_target(text, message, user_name)
-            if tname:
-                ammo = get_user_messages(chat_id, name_query=tquery, user_id=tuid)
-                if ammo:
-                    ammo_txt = "\n".join(f"- {m}" for _, m in ammo)
-                    parts.append(f"Mode: ROAST\nTarget: {tname}\nTheir recent messages (use these as material):\n{ammo_txt}")
-                else:
-                    parts.append(f"Mode: ROAST\nTarget: {tname}\nNo recent messages from them. Do NOT invent facts about them. Say in one line that they have said nothing to roast.")
-            else:
-                parts.append("Mode: ROAST\nTarget: the sender")
-        else:
-            is_question = bool(re.search(r'\?|\b(kya|kaise|kyun|kaha|kaun|bola|tha|how|why|what|where|which|help|bata|btao|batao)\b', (text or "").lower()))
-            mode = "ANSWER" if is_question else "CHAT"
-            parts.append(f"Mode: {mode}")
+            tname, tquery = resolve_roast_target(text, message, user_name)
+            is_self = (tname == user_name)
+            replied_txt = ""
+            if message.reply_to_message and not is_self:
+                replied_txt = (message.reply_to_message.caption or message.reply_to_message.text or "").strip()
+
+            extra = []
+            real = find_user_name(chat_id, tquery) if tquery else None
+            if real:
+                extra = [m for m in get_user_messages(chat_id, real) if useful_line(m) and m != replied_txt][-4:]
+
+            source = ([replied_txt] if replied_txt else []) + extra
+            if not source:
+                pool = NO_MATERIAL_SELF if is_self else NO_MATERIAL_OTHER
+                roast_fail_msg = random.choice(pool).format(name=tname or "Wo")
+                bot.reply_to(message, roast_fail_msg)
+                save_chat_message(chat_id, "Flash", roast_fail_msg)
+                return
+
+            parts.append(f"Mode: ROAST\nTarget: {tname}")
+            if replied_txt:
+                parts.append(f'Message to roast: "{replied_txt}"')
+            if extra:
+                parts.append("Their other messages:\n" + "\n".join(f"- {m}" for m in extra))
+            user_payload = "\n".join(parts)
+
+            reply = call_ai(SYSTEM_PROMPT, user_payload, few_shots=FEW_SHOTS, mode="ROAST")
+            if bad_roast(reply, source):
+                reply = call_ai(SYSTEM_PROMPT, user_payload +
+                    "\n\nRejected: it had a comparison, was too long, or ignored their words. "
+                    "Redo in ONE plain sentence that directly names what they said.", few_shots=FEW_SHOTS, mode="ROAST")
+            if bad_roast(reply, source):
+                reply = f"'{source[0][:60]}' likh ke kya ukhaad liya, bata?"
+            elif random.random() < 0.5 and not re.search(r'\b(bc|mc|mkc|chutiy\w*|gandu|bhosd\w*|lodu)\b', reply.lower()):
+                reply = reply.rstrip('.! ') + f", {random.choice(ABUSE_TAGS)}."
+
+            sent_msg = bot.reply_to(message, reply)
+            bot_id = bot_info.id
+            sent_msg_id = getattr(sent_msg, 'message_id', None)
+            save_chat_message(
+                chat_id=chat_id,
+                user_name="Flash",
+                text=reply,
+                user_id=bot_id,
+                message_id=sent_msg_id,
+                reply_to_msg_id=message_id,
+                reply_to_user_id=user_id
+            )
+            return
+
+        # ANSWER & CHAT Mode Handling
+        is_question = bool(re.search(r'\?|\b(kya|kaise|kyun|kaha|kaun|bola|tha|how|why|what|where|which|help|bata|btao|batao)\b', (text or "").lower()))
+        mode = "ANSWER" if is_question else "CHAT"
+        parts.append(f"Mode: {mode}")
 
         user_payload = "\n".join(parts)
 
@@ -2238,7 +2323,7 @@ def handle_group_message(message):
                     return True
                 if re.search(r"\bitn[ai]\s+\w+\s+hai\s+ki\b", t_low):
                     return True
-                if any(k in t_low for k in ["cycle ki chain", "chai ki tapri", "chai ki taseer", "keyboard", "thak gaya"]):
+                if any(k in t_low for k in ["cycle ki chain", "chai ki tapri", "chai ki taseer", "keyboard", "thak gaya", "mantra"]):
                     return True
                 if "sharam se khatam" in t_low or "battery sharam" in t_low:
                     return True
