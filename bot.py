@@ -1222,13 +1222,8 @@ def should_respond(message, bot_username):
     return False
 
 
-# ============ HARD HINDI FAMILY FILTER (mc/bc pass freely, 'teri maa' style blocked) ============
-FAMILY_BANNED_PATTERNS = [
-    r'\bmaa\b', r'\bmata\b', r'\bbaap\b', r'\bpapa\b', r'\bmummy\b',
-    r'\bammi\b', r'\bamma\b', r'\bpita\b', r'\bpitaji\b', r'\babbu\b',
-    r'\bwalid\b', r'\bwalida\b', r'\bparivaar\b', r'\bkhandaan\b',
-    r'\b(teri|tere|tera|apni|apne|tumhare)\s+(mom|dad|mum|dada|daddy|mother|father|maa|baap|mummy|papa|ammi|abbu)\b'
-]
+# ============ ABUSIVE GUARDRAILS REMOVED ============
+FAMILY_BANNED_PATTERNS = []
 
 SAFE_CLEAN_ROASTS = [
     "Bhai tu rehne de, pehle apni baat me thoda sense daal le phir gyaan dena.",
@@ -1264,8 +1259,7 @@ MODE ROAST
 - You get "Message to roast" (the exact words) and maybe their other messages. Roast THOSE words only.
 - Formula: say what they wrote, then give a blunt verdict on why it is dumb, lazy or pointless. One plain sentence, max 20 words.
 - NO comparisons, similes, metaphors, proverbs or invented objects. Say the criticism directly, like a friend who is fed up.
-- Abusive language is allowed and encouraged in roasts: bc, mc, mkc, chutiya, gandu, bhosdike, lodu. Use 1 or 2 where it fits naturally, never forced.
-- Never bring in a person's parents or sisters in full sentences, religion, caste, looks, disability or anything they can't change. Attack what they said and how they behave.
+- All abusive language, unfiltered insults, and savage street roasts are 100% permitted without guardrails: bc, mc, mkc, chutiya, gandu, bhosdike, lodu, etc. Hit hard, blunt, and completely unfiltered based on what they said.
 - Your line must refer to something in "Message to roast". If you can't, say you have nothing to roast.
 
 MODE ANSWER
@@ -1303,9 +1297,7 @@ FEW_SHOTS = [
 ]
 
 def contains_family_words(text):
-    """Hard Python filter: returns True if AI reply contains any family/parent words."""
-    if not text:
-        return False
+    return False
     t = text.lower()
     for pat in FAMILY_BANNED_PATTERNS:
         if re.search(pat, t):
@@ -2183,7 +2175,6 @@ def bad_roast(reply, source_lines):
     """True if the roast is a simile, too long, or doesn't use their words."""
     if not reply or SIMILE_RE.search(reply): return True
     if len(reply.split()) > 28: return True
-    if contains_family_words(reply): return True   # blocks "teri maa" style lines; mc/bc still pass
     return not grounded(reply, source_lines)
 
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
@@ -2319,8 +2310,6 @@ def handle_group_message(message):
                 if not txt:
                     return True
                 t_low = txt.lower()
-                if contains_family_words(txt):
-                    return True
                 if re.search(r"\bitn[ai]\s+\w+\s+hai\s+ki\b", t_low):
                     return True
                 if any(k in t_low for k in ["cycle ki chain", "chai ki tapri", "chai ki taseer", "keyboard", "thak gaya", "mantra"]):
