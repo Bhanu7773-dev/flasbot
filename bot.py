@@ -5,7 +5,7 @@ try:
 except Exception:
     pass
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import urllib.parse
 from urllib.parse import urlparse
 import time
@@ -16,6 +16,9 @@ import json
 import sqlite3
 import logging
 import requests
+import hmac
+import hashlib
+import io
 from ddgs import DDGS
 from telebot import TeleBot, apihelper, types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -48,6 +51,21 @@ load_dotenv_file()
 import random
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+APP_SECRET = hashlib.sha256(("flash:" + TELEGRAM_BOT_TOKEN).encode()).digest()
+
+def sign_user(user_id, ttl=12*3600):
+    exp = int(time.time()) + ttl
+    sig = hmac.new(APP_SECRET, f"{user_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{exp}.{sig}"
+
+def verify_user(user_id, token):
+    try:
+        exp, sig = str(token).split(".")
+        if int(exp) < time.time(): return False
+        good = hmac.new(APP_SECRET, f"{user_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+        return hmac.compare_digest(good, sig)
+    except Exception:
+        return False
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
@@ -244,190 +262,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 bot = TeleBot(TELEGRAM_BOT_TOKEN)
 http_session = requests.Session()
 
-# ---------------- KEEP-ALIVE HEALTH SERVER & TELEGRAM MINI-APP BACKEND ----------------
-MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roulette_miniapp.html")
-
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
-
-        if path in ["/roulette", "/game", "/miniapp"]:
-            if os.path.exists(MINIAPP_HTML_PATH):
-                with open(MINIAPP_HTML_PATH, "r", encoding="utf-8") as f:
-                    html_content = f.read()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(html_content.encode("utf-8"))
-            else:
-                self.send_error(404, "Mini App HTML not found")
-            return
-
-        if path == "/api/player":
-            qs = urllib.parse.parse_qs(parsed.query)
-            try:
-                user_id = int(qs.get("user_id", [6056618592])[0])
-            except Exception:
-                user_id = 6056618592
-            user_name = qs.get("user_name", ["Player"])[0]
-
-            player = get_or_create_roulette_player(user_id, user_name)
-            rank = 1
-            try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    c = conn.cursor()
-                    c.execute("SELECT COUNT(*) + 1 FROM roulette_scores WHERE points > ?", (player["points"],))
-                    rank = c.fetchone()[0]
-            except Exception:
-                pass
-            player["rank"] = rank
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(player).encode("utf-8"))
-            return
-
-        # Default root health check
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Flash Bot is ONLINE 24/7! Status: 100% HEALTHY.")
-
-    def do_POST(self):
-        content_len = int(self.headers.get("Content-Length", 0))
-        post_body = self.rfile.read(content_len) if content_len > 0 else b"{}"
-        try:
-            body = json.loads(post_body.decode("utf-8"))
-        except Exception:
-            body = {}
-
-        path = urllib.parse.urlparse(self.path).path
-
-        if path == "/api/spin":
-            user_id = int(body.get("user_id", 0))
-            user_name = clean_player_name(body.get("user_name", "Player"))
-            current_round = int(body.get("round", 1))
-            current_pot = int(body.get("current_pot", 0))
-
-            player = get_or_create_roulette_player(user_id, user_name)
-
-            bullet = random.randint(1, 6)
-            chamber = random.randint(1, 6)
-
-            if chamber == bullet:
-                # Shot!
-                new_pts = max(0, player["points"] - 150)
-                try:
-                    with sqlite3.connect(DB_PATH) as conn:
-                        conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
-                except Exception as e:
-                    logging.error(f"DB update error: {e}")
-                schedule_cloud_sync()
-
-                resp = {
-                    "status": "dead",
-                    "bullet": bullet,
-                    "chamber": chamber,
-                    "new_points": new_pts,
-                    "roast": random.choice(POOR_ROULETTE_QUOTES)
-                }
-            else:
-                # Survived
-                next_pot = ROULETTE_ROUND_POTS.get(current_round, current_pot + 250)
-                if current_round >= 6:
-                    jackpot_pts = player["points"] + next_pot
-                    try:
-                        with sqlite3.connect(DB_PATH) as conn:
-                            conn.execute("UPDATE roulette_scores SET points = ?, streak = streak + 5, wins = wins + 1 WHERE user_id = ?", (jackpot_pts, user_id))
-                    except Exception as e:
-                        logging.error(f"DB update error: {e}")
-                    schedule_cloud_sync()
-
-                    resp = {
-                        "status": "jackpot",
-                        "bullet": bullet,
-                        "chamber": chamber,
-                        "jackpot": next_pot,
-                        "new_points": jackpot_pts
-                    }
-                else:
-                    resp = {
-                        "status": "survived",
-                        "bullet": bullet,
-                        "chamber": chamber,
-                        "current_pot": next_pot,
-                        "next_round": current_round + 1
-                    }
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(resp).encode("utf-8"))
-            return
-
-        if path == "/api/cashout":
-            user_id = int(body.get("user_id", 0))
-            user_name = clean_player_name(body.get("user_name", "Player"))
-            pot = int(body.get("pot", 0))
-
-            player = get_or_create_roulette_player(user_id, user_name)
-            new_pts = player["points"] + pot
-            new_streak = player["streak"] + 1
-            best_streak = max(player["best_streak"], new_streak)
-
-            try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
-            except Exception as e:
-                logging.error(f"DB update error: {e}")
-            schedule_cloud_sync()
-
-            resp = {
-                "status": "cashed_out",
-                "new_points": new_pts,
-                "streak": new_streak
-            }
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(resp).encode("utf-8"))
-            return
-
-        self.send_error(404, "Not Found")
-
-    def log_message(self, format, *args):
-        return
-
-def run_health_server():
-    port = int(os.environ.get("PORT", 8080))
-    try:
-        server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-        logging.info(f"Keep-Alive Health server running on port {port}")
-        server.serve_forever()
-    except Exception as e:
-        logging.warning(f"Health server notice: {e}")
-
-threading.Thread(target=run_health_server, daemon=True).start()
-
-def self_ping_keeper():
-    time.sleep(30)
-    while True:
-        try:
-            url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com')
-            if url:
-                http_session.get(url, timeout=10)
-                logging.info('Keep-alive ping sent to prevent Render sleep.')
-        except Exception:
-            pass
-        time.sleep(300) # Ping every 5 minutes
-
-threading.Thread(target=self_ping_keeper, daemon=True).start()
-
-# ----------------------------------------------------------------------------
-
-
 # Initialize local SQLite database
 with sqlite3.connect(DB_PATH) as conn:
     conn.executescript("""
@@ -452,6 +286,13 @@ with sqlite3.connect(DB_PATH) as conn:
             losses INTEGER DEFAULT 0,
             last_daily INTEGER DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS roulette_runs (
+            user_id INTEGER PRIMARY KEY,
+            bullet INTEGER,
+            round INTEGER,
+            pot INTEGER,
+            updated INTEGER
+        );
     """)
     # Safe migration for existing DB
     cursor = conn.execute("PRAGMA table_info(messages)")
@@ -470,10 +311,37 @@ with sqlite3.connect(DB_PATH) as conn:
 
 BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 6056618592))
 
+_CLOUD_SYNC_TIMER = None
+_CLOUD_SYNC_PENDING = False
+_CLOUD_SYNC_LOCK = threading.Lock()
+_LAST_CLOUD_SYNC_TIME = 0
+
+def schedule_cloud_sync():
+    """Debounced cloud backup: at most one real sync per 60 seconds."""
+    global _CLOUD_SYNC_TIMER, _CLOUD_SYNC_PENDING
+    with _CLOUD_SYNC_LOCK:
+        _CLOUD_SYNC_PENDING = True
+        if _CLOUD_SYNC_TIMER is not None and _CLOUD_SYNC_TIMER.is_alive():
+            return
+        now = time.time()
+        delay = max(0.0, 60.0 - (now - _LAST_CLOUD_SYNC_TIME))
+        _CLOUD_SYNC_TIMER = threading.Timer(delay, _run_debounced_cloud_sync)
+        _CLOUD_SYNC_TIMER.daemon = True
+        _CLOUD_SYNC_TIMER.start()
+
+def _run_debounced_cloud_sync():
+    global _CLOUD_SYNC_PENDING, _LAST_CLOUD_SYNC_TIME
+    with _CLOUD_SYNC_LOCK:
+        if not _CLOUD_SYNC_PENDING:
+            return
+        _CLOUD_SYNC_PENDING = False
+        _LAST_CLOUD_SYNC_TIME = time.time()
+    sync_to_telegram_cloud()
+
 def sync_to_telegram_cloud():
-    """Syncs SQLite roulette scores to pinned cloud storage message in Telegram."""
+    """Syncs SQLite roulette scores to pinned roulette_backup.json document in Telegram."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
             c.execute("SELECT user_id, user_name, points, streak, best_streak, wins, losses, last_daily FROM roulette_scores")
             rows = c.fetchall()
@@ -499,52 +367,67 @@ def sync_to_telegram_cloud():
             "total_players": len(players),
             "players": players
         }
-        json_str = json.dumps(payload, indent=2, ensure_ascii=False)
+        json_bytes = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
+        bio = io.BytesIO(json_bytes)
+        bio.name = "roulette_backup.json"
         ts = time.strftime('%Y-%m-%d %H:%M:%S UTC')
-        msg_content = f"📦 *FLASH CLOUD DATABASE BACKUP*\n`{ts}`\n\n```json\n{json_str}\n```"
 
         chat = bot.get_chat(BACKUP_CHAT_ID)
-        pinned = chat.pinned_message
+        old_pinned = chat.pinned_message
 
-        if pinned and pinned.text and "FLASH CLOUD DATABASE BACKUP" in pinned.text:
+        new_doc_msg = bot.send_document(
+            BACKUP_CHAT_ID,
+            bio,
+            caption=f"📦 *FLASH CLOUD DATABASE BACKUP*\n`{ts}`\nTotal Players: {len(players)}",
+            parse_mode="Markdown"
+        )
+        bot.pin_chat_message(BACKUP_CHAT_ID, new_doc_msg.message_id, disable_notification=True)
+        logging.info(f"☁️ Cloud backup document created & pinned (Message #{new_doc_msg.message_id})")
+
+        if old_pinned and old_pinned.message_id != new_doc_msg.message_id:
             try:
-                bot.edit_message_text(msg_content, chat_id=BACKUP_CHAT_ID, message_id=pinned.message_id, parse_mode="Markdown")
-                logging.info(f"☁️ Cloud backup updated (Message #{pinned.message_id})")
-                return
-            except Exception as e:
-                if "message is not modified" in str(e):
-                    return
-
-        new_msg = bot.send_message(BACKUP_CHAT_ID, msg_content, parse_mode="Markdown")
-        bot.pin_chat_message(BACKUP_CHAT_ID, new_msg.message_id, disable_notification=True)
-        logging.info(f"☁️ Cloud backup created & pinned (Message #{new_msg.message_id})")
+                bot.delete_message(BACKUP_CHAT_ID, old_pinned.message_id)
+            except Exception:
+                pass
     except Exception as e:
         logging.error(f"Error in sync_to_telegram_cloud: {e}")
 
-def schedule_cloud_sync():
-    """Runs sync_to_telegram_cloud in a background daemon thread."""
-    threading.Thread(target=sync_to_telegram_cloud, daemon=True).start()
-
 def restore_from_telegram_cloud():
-    """Restores database from Telegram pinned cloud backup on startup."""
+    """Restores database from Telegram pinned document or legacy text backup on startup."""
     try:
         chat = bot.get_chat(BACKUP_CHAT_ID)
-        if not chat.pinned_message or not chat.pinned_message.text:
+        pinned = chat.pinned_message
+        if not pinned:
             logging.info("ℹ️ No pinned cloud backup found in backup chat.")
             return False
 
-        text = chat.pinned_message.text
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1:
+        data = None
+        is_legacy_text = False
+
+        if pinned.document and (pinned.document.file_name == "roulette_backup.json" or pinned.document.mime_type == "application/json"):
+            file_info = bot.get_file(pinned.document.file_id)
+            file_bytes = bot.download_file(file_info.file_path)
+            data = json.loads(file_bytes.decode("utf-8"))
+        elif pinned.document:
+            file_info = bot.get_file(pinned.document.file_id)
+            file_bytes = bot.download_file(file_info.file_path)
+            data = json.loads(file_bytes.decode("utf-8"))
+        elif pinned.text and "FLASH CLOUD DATABASE BACKUP" in pinned.text:
+            text = pinned.text
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1:
+                data = json.loads(text[start:end+1])
+                is_legacy_text = True
+
+        if not data:
             return False
 
-        data = json.loads(text[start:end+1])
         players = data.get("players", {})
         if not players:
             return False
 
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
             for uid_str, p in players.items():
                 uid = int(uid_str)
@@ -562,6 +445,11 @@ def restore_from_telegram_cloud():
             conn.commit()
 
         logging.info(f"✅ Successfully restored {len(players)} players from Telegram Cloud Backup!")
+
+        if is_legacy_text:
+            logging.info("Migrating legacy text backup to document format...")
+            sync_to_telegram_cloud()
+
         return True
     except Exception as e:
         logging.error(f"❌ Error restoring from Telegram Cloud Backup: {e}")
@@ -586,18 +474,13 @@ def save_chat_message(chat_id, user_name, text, user_id=None, message_id=None, r
     except Exception as e:
         logging.error(f"Error saving message: {e}")
 
-
-# ----------------- RUSSIAN ROULETTE V2 ENGINE (PUSH-YOUR-LUCK) -----------------
-# STRICT ANTI-FLOOD: All animations, rounds, cashouts, deaths, and timeouts update
-# THE SAME MESSAGE in-place via edit_message_text. ZERO NEW MESSAGES CREATED!
-
+# ----------------- RUSSIAN ROULETTE ENGINE -----------------
 ROULETTE_ROUND_POTS = {
     1: 50,
     2: 120,
     3: 220,
     4: 380,
-    5: 600,
-    6: 1000
+    5: 600
 }
 
 POOR_ROULETTE_QUOTES = [
@@ -610,16 +493,28 @@ POOR_ROULETTE_QUOTES = [
     "Zindagi me itna gareeb koi kaise ho sakta hai? 150 points kama ke aa pehle!"
 ]
 
-TIMEOUT_ROASTS = [
-    "Itna darpok hai tu ki decision lene me haath kaanp gaye? 30s timeout ho gaya, chal nikal!",
-    "Bhai ki pant geeli ho gayi trigger dekh ke! Light-hearted coward detected, game expired!",
-    "Abe itna darr lag raha tha toh roulette shuru hi kyun kiya tha? Time expired, chal nikal!",
-    "30 second mein darr ke maare phone chhod ke bhaag gaya! Game cancelled, zero points for coward!",
-    "Darr ke aage jeet hoti hai, par tu toh darr ke pehle hi behosh ho gaya! Timeout!"
-]
+ROULETTE_LOCK = threading.Lock()
+rng = random.SystemRandom()
+LAST_SPIN_TIME = {}  # user_id -> float timestamp
+LAST_REPLIES = {}   # chat_id -> list of timestamps
 
-ACTIVE_ROULETTE_GAMES = {}
-RECENT_TALK = {}  # (chat_id, user_id) -> time Flash last replied to that user
+def chat_rate_ok(chat_id, max_per_min=6):
+    now = time.time()
+    ts = [t for t in LAST_REPLIES.get(chat_id, []) if now - t < 60]
+    LAST_REPLIES[chat_id] = ts
+    return len(ts) < max_per_min
+
+def mark_reply(chat_id):
+    LAST_REPLIES.setdefault(chat_id, []).append(time.time())
+
+USER_COOLDOWN = {}  # (chat_id, user_id) -> last trigger time
+def user_cooldown_ok(chat_id, user_id, secs=3):
+    now = time.time()
+    k = (chat_id, user_id)
+    if now - USER_COOLDOWN.get(k, 0) < secs:
+        return False
+    USER_COOLDOWN[k] = now
+    return True
 
 def clean_player_name(name):
     """Sanitizes username so Telegram Markdown formatting never crashes edits."""
@@ -629,41 +524,10 @@ def clean_player_name(name):
         name = name.replace(ch, '')
     return name.strip() or "Player"
 
-def render_cylinder(active_slot, is_shot=None):
-    """Generates visual 6-chamber revolver graphic."""
-    slots = []
-    for i in range(1, 7):
-        if i == active_slot:
-            if is_shot is True:
-                slots.append("💥")
-            elif is_shot is False:
-                slots.append("💨")
-            else:
-                slots.append("🔘")
-        else:
-            slots.append("⚪")
-    return "[ " + " | ".join(slots) + " ]"
-
-def update_roulette_msg(chat_id, message_id, text, reply_markup=None):
-    """
-    STRICT ANTI-FLOOD HELPER:
-    Updates the single existing roulette message in-place.
-    Never sends new messages into the chat.
-    """
-    try:
-        bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup, parse_mode="Markdown")
-    except Exception as e:
-        # Fallback to plain text if Markdown parse error occurred (e.g. strange username)
-        try:
-            clean_text = text.replace("*", "").replace("_", "").replace("`", "")
-            bot.edit_message_text(clean_text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup)
-        except Exception as e2:
-            logging.error(f"Error editing roulette message: {e2}")
-
 def get_or_create_roulette_player(user_id, user_name):
-    safe_name = clean_player_name(user_name)
+    safe_name = clean_player_name(user_name)[:32]
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
             c.execute("SELECT points, streak, best_streak, wins, losses, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
             row = c.fetchone()
@@ -688,9 +552,42 @@ def get_or_create_roulette_player(user_id, user_name):
         logging.error(f"Error getting roulette player: {e}")
         return {"user_id": user_id, "user_name": safe_name, "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0}
 
+def apply_win(user_id, pts, streak_bonus=1):
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute(
+            """UPDATE roulette_scores SET 
+               points = points + ?, 
+               streak = streak + ?, 
+               best_streak = MAX(best_streak, streak + ?), 
+               wins = wins + 1 
+               WHERE user_id = ?""",
+            (pts, streak_bonus, streak_bonus, user_id)
+        )
+        conn.commit()
+        row = conn.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,)).fetchone()
+        new_pts = row[0] if row else 0
+    schedule_cloud_sync()
+    return new_pts
+
+def apply_loss(user_id):
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute(
+            """UPDATE roulette_scores SET 
+               points = MAX(0, points - 150), 
+               streak = 0, 
+               losses = losses + 1 
+               WHERE user_id = ?""",
+            (user_id,)
+        )
+        conn.commit()
+        row = conn.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,)).fetchone()
+        new_pts = row[0] if row else 0
+    schedule_cloud_sync()
+    return new_pts
+
 def get_roulette_leaderboard(caller_id=None):
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
             c.execute("SELECT user_name, points, streak, best_streak, user_id FROM roulette_scores ORDER BY points DESC LIMIT 10")
             rows = c.fetchall()
@@ -710,32 +607,262 @@ def get_roulette_leaderboard(caller_id=None):
     except Exception as e:
         return f"Error loading leaderboard: {e}"
 
-def make_roulette_markup(session_id, current_pot, next_pot):
-    markup = InlineKeyboardMarkup()
-    btn_spin = InlineKeyboardButton(f"🔫 Fire Again (Risk it for +{next_pot} pts)", callback_data=f"rr_spin_{session_id}")
-    btn_leave = InlineKeyboardButton(f"💰 Cash Out (+{current_pot} pts)", callback_data=f"rr_leave_{session_id}")
-    markup.row(btn_spin)
-    markup.row(btn_leave)
-    return markup
+# ---------------- KEEP-ALIVE HEALTH SERVER & TELEGRAM MINI-APP BACKEND ----------------
+MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roulette_miniapp.html")
 
-def expire_roulette_session(session_id, chat_id, message_id, user_name):
-    """Handles 30-second decision timeout in-place. Updates existing message, ZERO new messages."""
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def send_json(self, code, obj):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path in ["/roulette", "/game", "/miniapp"]:
+            if os.path.exists(MINIAPP_HTML_PATH):
+                with open(MINIAPP_HTML_PATH, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(html_content.encode("utf-8"))
+            else:
+                self.send_error(404, "Mini App HTML not found")
+            return
+
+        if path == "/api/player":
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw_uid = qs.get("user_id", [None])[0]
+            token = qs.get("token", [None])[0]
+            try:
+                user_id = int(raw_uid) if raw_uid is not None else 0
+            except Exception:
+                user_id = 0
+
+            if not user_id or not token or not verify_user(user_id, token):
+                self.send_json(403, {"error": "unauthorized"})
+                return
+
+            raw_name = qs.get("user_name", ["Player"])[0]
+            user_name = clean_player_name(raw_name)[:32]
+
+            player = get_or_create_roulette_player(user_id, user_name)
+            rank = 1
+            try:
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    c = conn.cursor()
+                    c.execute("SELECT COUNT(*) + 1 FROM roulette_scores WHERE points > ?", (player["points"],))
+                    rank = c.fetchone()[0]
+            except Exception:
+                pass
+            player["rank"] = rank
+
+            # Run state
+            run_data = None
+            try:
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    r_row = conn.execute("SELECT round, pot FROM roulette_runs WHERE user_id = ?", (user_id,)).fetchone()
+                    if r_row and r_row[0] > 0:
+                        run_data = {"round": r_row[0], "pot": r_row[1]}
+            except Exception:
+                pass
+            player["run"] = run_data
+
+            # daily_in
+            now_ts = int(time.time())
+            last_daily = player.get("last_daily", 0)
+            daily_in = max(0, 86400 - (now_ts - last_daily))
+            player["daily_in"] = daily_in
+
+            self.send_json(200, player)
+            return
+
+        # Default root health check
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Flash Bot is ONLINE 24/7! Status: 100% HEALTHY.")
+
+    def do_POST(self):
+        content_len = int(self.headers.get("Content-Length", 0))
+        post_body = self.rfile.read(content_len) if content_len > 0 else b"{}"
+        try:
+            body = json.loads(post_body.decode("utf-8"))
+        except Exception:
+            body = {}
+
+        path = urllib.parse.urlparse(self.path).path
+
+        if path in ["/api/spin", "/api/cashout"]:
+            raw_uid = body.get("user_id")
+            token = body.get("token")
+            try:
+                user_id = int(raw_uid) if raw_uid is not None else 0
+            except Exception:
+                user_id = 0
+
+            if not user_id or not token or not verify_user(user_id, token):
+                self.send_json(403, {"error": "unauthorized"})
+                return
+
+            raw_name = body.get("user_name", "Player")
+            user_name = clean_player_name(raw_name)[:32]
+
+            if path == "/api/spin":
+                now = time.time()
+                if now - LAST_SPIN_TIME.get(user_id, 0) < 1.0:
+                    self.send_json(429, {"error": "slow_down"})
+                    return
+                LAST_SPIN_TIME[user_id] = now
+
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT points, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        p_row = cur.fetchone()
+                        if not p_row:
+                            cur.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily) VALUES (?, ?, 200, 0, 0, 0, 0, 0)", (user_id, user_name))
+                            pts, last_daily = 200, 0
+                        else:
+                            pts, last_daily = p_row[0], p_row[1]
+
+                        cur.execute("SELECT bullet, round, pot FROM roulette_runs WHERE user_id = ?", (user_id,))
+                        r_row = cur.fetchone()
+
+                        if not r_row:
+                            if pts < 150:
+                                now_ts = int(time.time())
+                                daily_in = max(0, 86400 - (now_ts - last_daily))
+                                conn.commit()
+                                self.send_json(200, {
+                                    "status": "broke",
+                                    "roast": random.choice(POOR_ROULETTE_QUOTES),
+                                    "daily_in": daily_in
+                                })
+                                return
+                            bullet = rng.randint(1, 6)
+                            cur.execute("INSERT INTO roulette_runs (user_id, bullet, round, pot, updated) VALUES (?, ?, 0, 0, ?)", (user_id, bullet, int(time.time())))
+                            current_round = 0
+                            current_pot = 0
+                        else:
+                            bullet, current_round, current_pot = r_row[0], r_row[1], r_row[2]
+
+                        current_round += 1
+                        chamber = current_round
+
+                        if chamber == bullet:
+                            # DEAD
+                            cur.execute("UPDATE roulette_scores SET points = MAX(0, points - 150), streak = 0, losses = losses + 1 WHERE user_id = ?", (user_id,))
+                            cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
+                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                            new_pts = cur.fetchone()[0]
+                            conn.commit()
+                            schedule_cloud_sync()
+                            self.send_json(200, {
+                                "status": "dead",
+                                "chamber": chamber,
+                                "new_points": new_pts,
+                                "roast": random.choice(POOR_ROULETTE_QUOTES)
+                            })
+                            return
+                        else:
+                            # SURVIVED
+                            pot = ROULETTE_ROUND_POTS[current_round]
+                            if current_round == 5:
+                                # JACKPOT
+                                cur.execute("UPDATE roulette_scores SET points = points + ?, streak = streak + 5, best_streak = MAX(best_streak, streak + 5), wins = wins + 1 WHERE user_id = ?", (pot, user_id))
+                                cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
+                                cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                                new_pts = cur.fetchone()[0]
+                                conn.commit()
+                                schedule_cloud_sync()
+                                self.send_json(200, {
+                                    "status": "jackpot",
+                                    "chamber": 5,
+                                    "jackpot": pot,
+                                    "new_points": new_pts
+                                })
+                                return
+                            else:
+                                cur.execute("UPDATE roulette_runs SET round = ?, pot = ?, updated = ? WHERE user_id = ?", (current_round, pot, int(time.time()), user_id))
+                                conn.commit()
+                                self.send_json(200, {
+                                    "status": "survived",
+                                    "chamber": chamber,
+                                    "current_pot": pot,
+                                    "next_round": current_round + 1
+                                })
+                                return
+
+            elif path == "/api/cashout":
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT round, pot FROM roulette_runs WHERE user_id = ?", (user_id,))
+                        r_row = cur.fetchone()
+                        if not r_row or r_row[0] < 1:
+                            conn.commit()
+                            self.send_json(400, {"status": "no_run"})
+                            return
+
+                        run_round, run_pot = r_row[0], r_row[1]
+                        cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
+                        if cur.rowcount <= 0:
+                            conn.commit()
+                            self.send_json(400, {"status": "no_run"})
+                            return
+
+                        cur.execute("UPDATE roulette_scores SET points = points + ?, streak = streak + 1, best_streak = MAX(best_streak, streak + 1), wins = wins + 1 WHERE user_id = ?", (run_pot, user_id))
+                        cur.execute("SELECT points, streak FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        pts_row = cur.fetchone()
+                        new_pts, streak = pts_row[0], pts_row[1]
+                        conn.commit()
+                        schedule_cloud_sync()
+                        self.send_json(200, {
+                            "status": "cashed_out",
+                            "credited": run_pot,
+                            "new_points": new_pts,
+                            "streak": streak
+                        })
+                        return
+
+        self.send_error(404, "Not Found")
+
+    def log_message(self, format, *args):
+        return
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        logging.info(f"Keep-Alive Health server running on port {port}")
+        server.serve_forever()
+    except Exception as e:
+        logging.warning(f"Health server notice: {e}")
+
+threading.Thread(target=run_health_server, daemon=True).start()
+
+def self_ping_keeper():
     time.sleep(30)
-    session = ACTIVE_ROULETTE_GAMES.get(session_id)
-    if session and session.get("is_active"):
-        session["is_active"] = False
-        if session_id in ACTIVE_ROULETTE_GAMES:
-            del ACTIVE_ROULETTE_GAMES[session_id]
-        roast = random.choice(TIMEOUT_ROASTS)
-        safe_name = clean_player_name(user_name)
-        timeout_text = (
-            f"╔══════════════════════════╗\n"
-            f"║ ⏱️ 30 SECONDS EXPIRED! ⏱️ ║\n"
-            f"╚══════════════════════════╝\n\n"
-            f"_{roast}_\n\n"
-            f"🐔 *{safe_name}* darr ke bhaag gaya! Iss game ke na koi points mile na kate."
-        )
-        update_roulette_msg(chat_id, message_id, timeout_text, reply_markup=None)
+    while True:
+        try:
+            url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com')
+            if url:
+                http_session.get(url, timeout=10)
+                logging.info('Keep-alive ping sent to prevent Render sleep.')
+        except Exception:
+            pass
+        time.sleep(300)
+
+threading.Thread(target=self_ping_keeper, daemon=True).start()
 
 def get_recent_chat_history(chat_id, limit=CONTEXT_MESSAGE_LIMIT):
     """Thread-safe retrieval of recent messages."""
@@ -1195,11 +1322,6 @@ def should_respond(message, bot_username):
     if getattr(message.chat, 'type', None) == 'private':
         return True
 
-    uid = message.from_user.id if message.from_user else None
-    if uid and not message.reply_to_message:
-        if time.time() - RECENT_TALK.get((message.chat.id, uid), 0) < 60:
-            return True
-
     # Reply to Flash's own message
     if message.reply_to_message and message.reply_to_message.from_user:
         if message.reply_to_message.from_user.is_bot:
@@ -1500,9 +1622,10 @@ def handle_start_command(message):
     safe_name = clean_player_name(raw_name)
 
     player = get_or_create_roulette_player(user_id, safe_name)
+    token = sign_user(user_id)
 
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}"
 
     markup = InlineKeyboardMarkup()
     btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
@@ -1517,7 +1640,7 @@ def handle_start_command(message):
             f"🎯 *Mini-App (In-App Frame)*\n"
             f"• 🔄 Interactive 6-Chamber Rotating Cylinder\n"
             f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
-            f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
+            f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 pts\n"
             f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
             f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
         )
@@ -1551,14 +1674,28 @@ def handle_roulette_command(message):
     # Check bankruptcy (needs at least 150 points to risk)
     if player["points"] < 150:
         quote = random.choice(POOR_ROULETTE_QUOTES)
+        now_ts = int(time.time())
+        last_daily = player.get("last_daily", 0)
+        daily_diff = now_ts - last_daily
+        daily_in = max(0, 86400 - daily_diff)
+        if daily_in > 0:
+            hours = daily_in // 3600
+            mins = (daily_in % 3600) // 60
+            daily_str = f"`{hours}h {mins}m` baad"
+        else:
+            daily_str = "abhi available hai! `/daily` claim kar lo"
+
         bot.reply_to(
             message,
             f"🚫 *Khelna Band, Gareeb!* (Balance: `{player['points']} pts`)\n\n"
             f"_{quote}_\n\n"
+            f"⏳ *Daily bonus:* {daily_str}!\n"
             f"💡 _Tip: `/daily` likho aur 100 free points claim karo ya `/balance` check karo!_",
             parse_mode="Markdown"
         )
         return
+
+    token = sign_user(user_id)
 
     # 1. Native Telegram Game (Corsair style!):
     # If registered in @BotFather via /newgame (short name: roulette), Telegram sends a native Game card.
@@ -1572,7 +1709,7 @@ def handle_roulette_command(message):
 
     # 2. Fallback for group / PM before BotFather /newgame registration:
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}"
     bot_username = "flash_billu_bot"
 
     markup = InlineKeyboardMarkup()
@@ -1595,7 +1732,7 @@ def handle_roulette_command(message):
         f"🎯 *Game Highlights:*\n"
         f"• 🔄 Interactive 6-Chamber Revolver Cylinder\n"
         f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
-        f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 ➜ +1000 pts\n"
+        f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 pts\n"
         f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
         f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
     )
@@ -1613,9 +1750,10 @@ def handle_game_callback(call):
         raw_name = call.from_user.first_name or "Player"
         safe_name = clean_player_name(raw_name)
         get_or_create_roulette_player(user_id, safe_name)
+        token = sign_user(user_id)
 
         render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-        game_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}"
+        game_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}"
 
         bot.answer_callback_query(call.id, url=game_url)
         logging.info(f"Opened native in-game view for {safe_name} ({user_id}) on callback {call.id}")
@@ -1625,181 +1763,6 @@ def handle_game_callback(call):
             bot.answer_callback_query(call.id, "Game load nahi ho paya, please try again.")
         except Exception:
             pass
-
-@bot.callback_query_handler(func=lambda call: call.data and call.data.startswith('rr_'))
-def handle_roulette_callback(call):
-    parts = call.data.split("_", 2)
-    if len(parts) < 3:
-        return
-    action = parts[1]
-    session_id = parts[2]
-
-    session = ACTIVE_ROULETTE_GAMES.get(session_id)
-    if not session or not session.get("is_active"):
-        bot.answer_callback_query(call.id, "Game expire ho chuka hai bhai ya finish ho gaya!", show_alert=True)
-        return
-
-    # Strictly only the player can press the buttons
-    if call.from_user.id != session["user_id"]:
-        bot.answer_callback_query(call.id, "Abe ye tumhara game nahi hai! Apna /roulette shuru karo.", show_alert=True)
-        return
-
-    # Inactivate immediately to prevent double-click race conditions
-    session["is_active"] = False
-    if session_id in ACTIVE_ROULETTE_GAMES:
-        del ACTIVE_ROULETTE_GAMES[session_id]
-
-    chat_id = session["chat_id"]
-    message_id = session["message_id"]
-    user_id = session["user_id"]
-    safe_name = clean_player_name(session["user_name"])
-    current_pot = session["current_pot"]
-    current_round = session["round"]
-
-    # 1. CASH OUT ACTION (UPDATES EXISTING MESSAGE, REMOVES BUTTONS)
-    if action == "leave":
-        bot.answer_callback_query(call.id, f"Cashed out +{current_pot} pts!")
-        player = get_or_create_roulette_player(user_id, safe_name)
-        new_pts = player["points"] + current_pot
-        new_streak = player["streak"] + 1
-        best_streak = max(player["best_streak"], new_streak)
-
-        try:
-            with sqlite3.connect(DB_PATH) as conn:
-                conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (new_pts, new_streak, best_streak, user_id))
-        except Exception as e:
-            logging.error(f"DB update error: {e}")
-        schedule_cloud_sync()
-
-        cashout_text = (
-            "╔══════════════════════════════╗\n"
-            "║   💰 CASHED OUT & SAFE! 💰   ║\n"
-            "╚══════════════════════════════╝\n\n"
-            f"🎉 *{safe_name}* ne samajhdari dikhai aur `+{current_pot} Points` jeet ke nikal gaya!\n"
-            f"💰 Naya Balance: `{new_pts} pts` | Current Streak: `{new_streak}` 🔥"
-        )
-        update_roulette_msg(chat_id, message_id, cashout_text, reply_markup=None)
-        return
-
-    # 2. FIRE AGAIN ACTION (UPDATES EXISTING MESSAGE IN-PLACE, NEVER MAKES NEW MESSAGE)
-    if action == "spin":
-        next_round = current_round + 1
-        bot.answer_callback_query(call.id, f"Spinning for Round {next_round}!")
-
-        # Dynamic spinning visual on the same message
-        spin_icons = ["⚪", "⚪", "⚪", "⚪", "⚪", "⚪"]
-        spin_icons[next_round % 6] = "🔄"
-        spin_vis = "[ " + " | ".join(spin_icons) + " ]"
-
-        f1_text = (
-            f"╔══════════════════════════╗\n"
-            f"║   🎲 ROUND {next_round} — RISK IT!  ║\n"
-            f"╚══════════════════════════╝\n\n"
-            f"🔄 *SPINNING CYLINDER FOR ROUND {next_round}...*\n"
-            f"`{spin_vis}`\n"
-            f"_Dhadkanein badh rahi hain... suspense badhta hua!_"
-        )
-        update_roulette_msg(chat_id, message_id, f1_text, reply_markup=None)
-        time.sleep(0.9)
-
-        # Independent random bullet and chamber for this round
-        bullet = random.randint(1, 6)
-        chamber = random.randint(1, 6)
-
-        # Frame 2: Aiming at temple
-        f2_text = (
-            f"╔══════════════════════════╗\n"
-            f"║   🎲 ROUND {next_round} — SUSPENSE   ║\n"
-            f"╚══════════════════════════╝\n\n"
-            f"🎯 *TRIGGER PULLED ON CHAMBER {chamber}/6...*\n"
-            f"`{render_cylinder(chamber, None)}`\n"
-            f"😰 _Hawa band... Kismat ya Maut?_"
-        )
-        update_roulette_msg(chat_id, message_id, f2_text, reply_markup=None)
-        time.sleep(1.0)
-
-        if chamber == bullet:
-            # SHOT FIRED! Lost session pot + extra 150 points deducted from total balance. Clear game.
-            player = get_or_create_roulette_player(user_id, safe_name)
-            new_pts = max(0, player["points"] - 150)
-            try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE roulette_scores SET points = ?, streak = 0, losses = losses + 1 WHERE user_id = ?", (new_pts, user_id))
-            except Exception as e:
-                logging.error(f"DB update error: {e}")
-            schedule_cloud_sync()
-
-            death_text = (
-                "╔══════════════════════════╗\n"
-                "║   💥 B O O O O M ! ! 💥  ║\n"
-                "╚══════════════════════════╝\n\n"
-                f"🔴 *LIVE BULLET FIRED FROM CHAMBER {chamber}/6!*\n"
-                f"`{render_cylinder(chamber, True)}`\n\n"
-                f"💀 *Khel Khatam! {safe_name} Got Shot in Round {next_round}!*\n"
-                f"💸 Iss game ke saare `+{current_pot} pts` paani me gaye!\n"
-                f"⚠️ Aur total wallet se extra `-150 Points` kat gaye!\n"
-                f"💰 Naya Balance: `{new_pts} pts` | Streak Broken ❌"
-            )
-            update_roulette_msg(chat_id, message_id, death_text, reply_markup=None)
-            return
-
-        # SURVIVED NEXT ROUND!
-        new_pot = ROULETTE_ROUND_POTS.get(next_round, current_pot + 250)
-
-        # If beat final Round 6: JACKPOT!
-        if next_round >= 6:
-            player = get_or_create_roulette_player(user_id, safe_name)
-            jackpot_pts = player["points"] + new_pot
-            new_streak = player["streak"] + 5
-            best_streak = max(player["best_streak"], new_streak)
-            try:
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE roulette_scores SET points = ?, streak = ?, best_streak = ?, wins = wins + 1 WHERE user_id = ?", (jackpot_pts, new_streak, best_streak, user_id))
-            except Exception as e:
-                logging.error(f"DB update error: {e}")
-
-            jackpot_text = (
-                "╔══════════════════════════════╗\n"
-                "║ 👑 ULTIMATE LEGEND JACKPOT 👑 ║\n"
-                "╚══════════════════════════════╝\n\n"
-                f"🏆 *{safe_name} NE LAGATAR 6 ROUNDS SURVIVE KIYE!*\n"
-                f"`[ 💨 | 💨 | 💨 | 💨 | 💨 | 💨 ]`\n\n"
-                f"🔥 Jackpot Reward: `+{new_pot} Points`!\n"
-                f"💰 Naya Balance: `{jackpot_pts} pts` | Streak: `{new_streak}` 🔥"
-            )
-            update_roulette_msg(chat_id, message_id, jackpot_text, reply_markup=None)
-            return
-
-        # Advance session to next round in the SAME message
-        next_session_id = f"{user_id}_{int(time.time()*1000)}"
-        future_pot = ROULETTE_ROUND_POTS.get(next_round + 1, new_pot + 250)
-
-        ACTIVE_ROULETTE_GAMES[next_session_id] = {
-            "user_id": user_id,
-            "user_name": safe_name,
-            "round": next_round,
-            "current_pot": new_pot,
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "is_active": True
-        }
-
-        res_text = (
-            "╔══════════════════════════╗\n"
-            "║    💨 *C L I C K...*     ║\n"
-            "╚══════════════════════════╝\n\n"
-            f"💨 *CHAMBER {chamber}/6 WAS EMPTY!*\n"
-            f"`{render_cylinder(chamber, False)}`\n\n"
-            f"🔥 *{safe_name} Survived Round {next_round}!* 🔥\n"
-            f"💰 Current Pot: `+{new_pot} Points`\n\n"
-            f"Kismat chamak rahi hai! Agle round me `+{future_pot} pts` ke liye risk lega ya `+{new_pot} pts` leke nikalna hai?\n"
-            f"⏱️ _(30 seconds to decide!)_"
-        )
-        markup = make_roulette_markup(next_session_id, new_pot, future_pot)
-        update_roulette_msg(chat_id, message_id, res_text, reply_markup=markup)
-
-        # Start new 30s timer thread
-        threading.Thread(target=expire_roulette_session, args=(next_session_id, chat_id, message_id, safe_name), daemon=True).start()
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:balance|bal|wallet|points|mybalance)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_balance_command(message):
@@ -1883,12 +1846,13 @@ def handle_daily_points(message):
         return
 
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
-            new_pts = player["points"] + 100
-            c.execute("UPDATE roulette_scores SET points = ?, last_daily = ? WHERE user_id = ?", (new_pts, now_ts, user_id))
+            c.execute("UPDATE roulette_scores SET points = points + 100, last_daily = ? WHERE user_id = ?", (now_ts, user_id))
             conn.commit()
-            schedule_cloud_sync()
+            c.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+            new_pts = c.fetchone()[0]
+        schedule_cloud_sync()
 
         bot.reply_to(
             message,
@@ -2305,6 +2269,7 @@ def handle_search_command(message):
     else:
         full_reply = link_text or "🤔"
     bot.reply_to(message, full_reply[:4000], disable_web_page_preview=True)
+    mark_reply(message.chat.id)
 
 @bot.message_handler(func=lambda msg: True, content_types=['text'])
 def handle_group_message(message):
@@ -2343,6 +2308,10 @@ def handle_group_message(message):
     # 2. Check if the user addressed Flash
     bot_info = bot.get_me()
     if should_respond(message, bot_info.username):
+        if message.chat.type != 'private':
+            if not user_cooldown_ok(chat_id, user_id) or not chat_rate_ok(chat_id):
+                return
+
         logging.info(f"Bot invoked by {user_name}: {text}")
         bot.send_chat_action(chat_id, "typing")
         try:
@@ -2377,8 +2346,7 @@ def handle_group_message(message):
                     reply = link_intro(clean_text, results) + "\n\n" + build_link_reply(results)
                     reply += "\n\n⚠️ Download sirf official source se karo."
                     sent = bot.reply_to(message, reply[:4000], disable_web_page_preview=True)
-                    if user_id:
-                        RECENT_TALK[(chat_id, user_id)] = time.time()
+                    mark_reply(chat_id)
                     save_chat_message(chat_id=chat_id, user_name="Flash", text=reply[:500],
                                       user_id=bot_info.id, message_id=getattr(sent, "message_id", None),
                                       reply_to_msg_id=message_id, reply_to_user_id=user_id)
@@ -2433,9 +2401,8 @@ def handle_group_message(message):
                     )
                     roast_fail_msg = call_ai(SYSTEM_PROMPT, no_mat_prompt, mode="CHAT") or "🤔"
                 bot.reply_to(message, roast_fail_msg)
+                mark_reply(chat_id)
                 save_chat_message(chat_id, "Flash", roast_fail_msg)
-                if user_id:
-                    RECENT_TALK[(chat_id, user_id)] = time.time()
                 return
 
             parts.append(
@@ -2465,10 +2432,9 @@ def handle_group_message(message):
                 reply = "🤔"
 
             sent_msg = bot.reply_to(message, reply)
+            mark_reply(chat_id)
             bot_id = bot_info.id
             sent_msg_id = getattr(sent_msg, 'message_id', None)
-            if user_id:
-                RECENT_TALK[(chat_id, user_id)] = time.time()
             save_chat_message(
                 chat_id=chat_id,
                 user_name="Flash",
@@ -2494,10 +2460,9 @@ def handle_group_message(message):
                 reply = "🤔"
 
             sent_msg = bot.reply_to(message, reply)
+            mark_reply(chat_id)
             bot_id = bot_info.id
             sent_msg_id = getattr(sent_msg, 'message_id', None)
-            if user_id:
-                RECENT_TALK[(chat_id, user_id)] = time.time()
             save_chat_message(
                 chat_id=chat_id,
                 user_name="Flash",
@@ -2510,6 +2475,7 @@ def handle_group_message(message):
         except Exception as e:
             logging.error(f"Error answering user: {e}")
             bot.reply_to(message, "🤔")
+            mark_reply(chat_id)
 
 if __name__ == "__main__":
     bot_info = bot.get_me()
