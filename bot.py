@@ -695,7 +695,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path in ["/roulette", "/game", "/miniapp"]:
+        if path in ["/roulette", "/game", "/games", "/miniapp"]:
             if os.path.exists(MINIAPP_HTML_PATH):
                 with open(MINIAPP_HTML_PATH, "r", encoding="utf-8") as f:
                     html_content = f.read()
@@ -1936,6 +1936,16 @@ def handle_channel_post(message):
         except Exception as e:
             logging.error(f"Error updating database: {e}")
 
+BOT_USERNAME_CACHE = None
+def get_bot_username():
+    global BOT_USERNAME_CACHE
+    if not BOT_USERNAME_CACHE:
+        try:
+            BOT_USERNAME_CACHE = bot.get_me().username
+        except Exception:
+            BOT_USERNAME_CACHE = "flash_billu_bot"
+    return BOT_USERNAME_CACHE
+
 @bot.message_handler(commands=['start'])
 def handle_start_command(message):
     user = message.from_user
@@ -1949,20 +1959,35 @@ def handle_start_command(message):
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     
     # Check start parameter for direct tab navigation
-    target_tab = "roulette"
-    cmd_text = message.text or ""
+    target_tab = "lobby"
+    cmd_text = (message.text or "").lower()
     if "slots" in cmd_text:
         target_tab = "slots"
     elif "aviator" in cmd_text or "crash" in cmd_text:
         target_tab = "aviator"
     elif "shop" in cmd_text:
         target_tab = "shop"
+    elif "roulette" in cmd_text:
+        target_tab = "roulette"
 
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab={target_tab}"
 
     markup = InlineKeyboardMarkup()
-    btn_webapp = InlineKeyboardButton("🎰 Open Flash Mini-App Hub 🚀", web_app=types.WebAppInfo(url=webapp_url))
+    btn_webapp = InlineKeyboardButton("🎮 Open Games Mini-App 🚀", web_app=types.WebAppInfo(url=webapp_url))
     markup.add(btn_webapp)
+
+    # If launched from a group shortcut link (e.g. /start games)
+    if any(k in cmd_text for k in ["games", "roulette", "slots", "aviator", "crash", "shop"]):
+        games_launch_text = (
+            f"🎮 *FLASH GAMES HUB* 🎰\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 *Player:* {safe_name}\n"
+            f"🎖️ *Rank Type:* `{player['title']}`\n"
+            f"💰 *Shared Wallet:* `{player['points']} pts`\n\n"
+            f"👇 *Neeche button tap karke Telegram ke andar Mini-App kholein:*"
+        )
+        bot.reply_to(message, games_launch_text, reply_markup=markup, parse_mode="Markdown")
+        return
 
     welcome_text = (
         f"⚡ *Hey {safe_name}! Welcome to Flash Bot!* ⚡\n"
@@ -1994,17 +2019,15 @@ def handle_games_command(message):
 
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=lobby"
-    bot_username = "flash_billu_bot"
+    b_user = get_bot_username()
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
         btn_webapp = InlineKeyboardButton("🎮 Open Games Mini-App 🚀", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        btn_miniapp = InlineKeyboardButton("🎮 Play In Telegram (Mini-App) 🚀", url=f"https://t.me/{bot_username}/roulette")
-        btn_pm = InlineKeyboardButton("💬 Open in PM (In-App Window) 🕹️", url=f"https://t.me/{bot_username}?start=games")
-        markup.row(btn_miniapp)
-        markup.row(btn_pm)
+        btn_play = InlineKeyboardButton("🎮 Play In Telegram (Open Mini-App) 🚀", url=f"https://t.me/{b_user}?start=games")
+        markup.add(btn_play)
 
     shield_status = "🛡️ Active" if player.get("shield") else "None"
 
@@ -2059,27 +2082,17 @@ def handle_roulette_command(message):
         return
 
     token = sign_user(user_id)
-
-    try:
-        bot.send_game(chat_id, "roulette")
-        logging.info(f"Successfully sent native Telegram Game 'roulette' to chat {chat_id}")
-        return
-    except Exception as e:
-        logging.warning(f"send_game 'roulette' not registered yet or failed: {e}")
-
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=roulette"
-    bot_username = "flash_billu_bot"
+    b_user = get_bot_username()
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
         btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        btn_miniapp = InlineKeyboardButton("🎰 Play In Telegram (Mini-App) 🔫", url=f"https://t.me/{bot_username}/roulette")
-        btn_pm = InlineKeyboardButton("💬 Play in PM (In-App Window) 🚀", url=f"https://t.me/{bot_username}?start=roulette")
-        markup.row(btn_miniapp)
-        markup.row(btn_pm)
+        btn_pm = InlineKeyboardButton("🎮 Play In Telegram (Mini-App) 🚀", url=f"https://t.me/{b_user}?start=roulette")
+        markup.add(btn_pm)
 
     intro_text = (
         f"🎰 *FLASH RUSSIAN ROULETTE* 🔫\n"
@@ -2104,15 +2117,15 @@ def handle_slots_command(message):
     token = sign_user(user_id)
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=slots"
-    bot_username = "flash_billu_bot"
+    b_user = get_bot_username()
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
         btn_webapp = InlineKeyboardButton("🎰 Open Slots Machine 🍒", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        btn_pm = InlineKeyboardButton("🎰 Play Slots in PM 🚀", url=f"https://t.me/{bot_username}?start=slots")
-        markup.row(btn_pm)
+        btn_pm = InlineKeyboardButton("🎰 Play Slots in Telegram 🚀", url=f"https://t.me/{b_user}?start=slots")
+        markup.add(btn_pm)
 
     slots_text = (
         f"🎰 *FLASH CASINO SLOTS* 🍒\n"
@@ -2138,15 +2151,15 @@ def handle_aviator_command(message):
     token = sign_user(user_id)
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=aviator"
-    bot_username = "flash_billu_bot"
+    b_user = get_bot_username()
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
         btn_webapp = InlineKeyboardButton("🚀 Launch Aviator Flight 💥", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        btn_pm = InlineKeyboardButton("🚀 Play Aviator in PM 💬", url=f"https://t.me/{bot_username}?start=aviator")
-        markup.row(btn_pm)
+        btn_pm = InlineKeyboardButton("🚀 Play Aviator in Telegram 💬", url=f"https://t.me/{b_user}?start=aviator")
+        markup.add(btn_pm)
 
     aviator_text = (
         f"🚀 *FLASH AVIATOR / CRASH* 💥\n"
@@ -2170,15 +2183,15 @@ def handle_shop_command(message):
     token = sign_user(user_id)
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
     webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=shop"
-    bot_username = "flash_billu_bot"
+    b_user = get_bot_username()
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
         btn_webapp = InlineKeyboardButton("🏪 Open Points Shop 🛡️", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        btn_pm = InlineKeyboardButton("🏪 Open Shop in PM 💬", url=f"https://t.me/{bot_username}?start=shop")
-        markup.row(btn_pm)
+        btn_pm = InlineKeyboardButton("🏪 Open Shop in Telegram 💬", url=f"https://t.me/{b_user}?start=shop")
+        markup.add(btn_pm)
 
     shop_text = (
         f"🏪 *THE UNDERGROUND POINTS SHOP* 🛡️\n"
