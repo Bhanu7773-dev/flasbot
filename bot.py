@@ -284,7 +284,9 @@ with sqlite3.connect(DB_PATH) as conn:
             best_streak INTEGER DEFAULT 0,
             wins INTEGER DEFAULT 0,
             losses INTEGER DEFAULT 0,
-            last_daily INTEGER DEFAULT 0
+            last_daily INTEGER DEFAULT 0,
+            title TEXT DEFAULT 'Greenhorn',
+            shield INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS roulette_runs (
             user_id INTEGER PRIMARY KEY,
@@ -292,6 +294,19 @@ with sqlite3.connect(DB_PATH) as conn:
             round INTEGER,
             pot INTEGER,
             updated INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS aviator_runs (
+            user_id INTEGER PRIMARY KEY,
+            bet INTEGER,
+            crash_point REAL,
+            start_time REAL
+        );
+        CREATE TABLE IF NOT EXISTS user_inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            item_id TEXT,
+            purchased_at INTEGER,
+            UNIQUE(user_id, item_id)
         );
     """)
     # Safe migration for existing DB
@@ -308,6 +323,56 @@ with sqlite3.connect(DB_PATH) as conn:
                 conn.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
             except Exception:
                 pass
+
+    r_cursor = conn.execute("PRAGMA table_info(roulette_scores)")
+    r_cols = [row[1] for row in r_cursor.fetchall()]
+    for col_name, col_type in [
+        ("title", "TEXT DEFAULT 'Greenhorn'"),
+        ("shield", "INTEGER DEFAULT 0")
+    ]:
+        if col_name not in r_cols:
+            try:
+                conn.execute(f"ALTER TABLE roulette_scores ADD COLUMN {col_name} {col_type}")
+            except Exception:
+                pass
+
+SHOP_ITEMS = {
+    "shield": {
+        "id": "shield",
+        "name": "Kevlar Vest 🛡️",
+        "price": 500,
+        "type": "shield",
+        "desc": "Roulette me 1 goli se bachata hai! Instant life save."
+    },
+    "lucky_clover": {
+        "id": "lucky_clover",
+        "name": "Lucky Clover 🍀",
+        "price": 800,
+        "type": "charm",
+        "desc": "Casino golden luck charm badge."
+    },
+    "vip_don": {
+        "id": "vip_don",
+        "name": "Mafia Don 👑",
+        "price": 2500,
+        "type": "title",
+        "desc": "Profile & Telegram VIP Rank title."
+    },
+    "high_roller": {
+        "id": "high_roller",
+        "name": "High Roller 💎",
+        "price": 5000,
+        "type": "title",
+        "desc": "Exclusive Casino Legend Title."
+    },
+    "death_defier": {
+        "id": "death_defier",
+        "name": "Death Defier 💀",
+        "price": 10000,
+        "type": "title",
+        "desc": "Supreme Master of Russian Roulette."
+    }
+}
 
 BACKUP_CHAT_ID = int(os.environ.get("BACKUP_CHAT_ID", 6056618592))
 
@@ -343,7 +408,7 @@ def sync_to_telegram_cloud():
     try:
         with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
-            c.execute("SELECT user_id, user_name, points, streak, best_streak, wins, losses, last_daily FROM roulette_scores")
+            c.execute("SELECT user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield FROM roulette_scores")
             rows = c.fetchall()
 
         if not rows:
@@ -358,7 +423,9 @@ def sync_to_telegram_cloud():
                 "best_streak": r[4],
                 "wins": r[5],
                 "losses": r[6],
-                "last_daily": r[7]
+                "last_daily": r[7],
+                "title": r[8] or "Greenhorn",
+                "shield": r[9] or 0
             }
 
         payload = {
@@ -431,8 +498,8 @@ def restore_from_telegram_cloud():
             c = conn.cursor()
             for uid_str, p in players.items():
                 uid = int(uid_str)
-                c.execute("""INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                c.execute("""INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                              ON CONFLICT(user_id) DO UPDATE SET
                              points = excluded.points,
                              user_name = excluded.user_name,
@@ -440,8 +507,10 @@ def restore_from_telegram_cloud():
                              best_streak = excluded.best_streak,
                              wins = excluded.wins,
                              losses = excluded.losses,
-                             last_daily = excluded.last_daily""",
-                          (uid, p["user_name"], p["points"], p["streak"], p["best_streak"], p["wins"], p["losses"], p["last_daily"]))
+                             last_daily = excluded.last_daily,
+                             title = excluded.title,
+                             shield = excluded.shield""",
+                          (uid, p["user_name"], p["points"], p["streak"], p["best_streak"], p["wins"], p["losses"], p["last_daily"], p.get("title", "Greenhorn"), p.get("shield", 0)))
             conn.commit()
 
         logging.info(f"✅ Successfully restored {len(players)} players from Telegram Cloud Backup!")
@@ -529,12 +598,12 @@ def get_or_create_roulette_player(user_id, user_name):
     try:
         with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
-            c.execute("SELECT points, streak, best_streak, wins, losses, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
+            c.execute("SELECT points, streak, best_streak, wins, losses, last_daily, title, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
             row = c.fetchone()
             if not row:
-                c.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily) VALUES (?, ?, 200, 0, 0, 0, 0, 0)", (user_id, safe_name))
+                c.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield) VALUES (?, ?, 200, 0, 0, 0, 0, 0, 'Greenhorn', 0)", (user_id, safe_name))
                 conn.commit()
-                row = (200, 0, 0, 0, 0, 0)
+                row = (200, 0, 0, 0, 0, 0, 'Greenhorn', 0)
             else:
                 c.execute("UPDATE roulette_scores SET user_name = ? WHERE user_id = ?", (safe_name, user_id))
                 conn.commit()
@@ -546,11 +615,13 @@ def get_or_create_roulette_player(user_id, user_name):
                 "best_streak": row[2],
                 "wins": row[3],
                 "losses": row[4],
-                "last_daily": row[5]
+                "last_daily": row[5],
+                "title": row[6] or "Greenhorn",
+                "shield": row[7] or 0
             }
     except Exception as e:
         logging.error(f"Error getting roulette player: {e}")
-        return {"user_id": user_id, "user_name": safe_name, "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0}
+        return {"user_id": user_id, "user_name": safe_name, "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0, "title": "Greenhorn", "shield": 0}
 
 def apply_win(user_id, pts, streak_bonus=1):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -674,6 +745,17 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 pass
             player["run"] = run_data
 
+            # Inventory
+            inventory = []
+            try:
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    inv_rows = conn.execute("SELECT item_id FROM user_inventory WHERE user_id = ?", (user_id,)).fetchall()
+                    inventory = [r[0] for r in inv_rows]
+            except Exception:
+                pass
+            player["inventory"] = inventory
+            player["shop_items"] = list(SHOP_ITEMS.values())
+
             # daily_in
             now_ts = int(time.time())
             last_daily = player.get("last_daily", 0)
@@ -699,7 +781,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
         path = urllib.parse.urlparse(self.path).path
 
-        if path in ["/api/spin", "/api/cashout"]:
+        if path in ["/api/spin", "/api/cashout", "/api/slots/spin", "/api/aviator/start", "/api/aviator/cashout", "/api/aviator/crashed", "/api/shop/buy"]:
             raw_uid = body.get("user_id")
             token = body.get("token")
             try:
@@ -725,13 +807,13 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     with sqlite3.connect(DB_PATH, timeout=10) as conn:
                         conn.execute("BEGIN IMMEDIATE")
                         cur = conn.cursor()
-                        cur.execute("SELECT points, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        cur.execute("SELECT points, last_daily, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
                         p_row = cur.fetchone()
                         if not p_row:
-                            cur.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily) VALUES (?, ?, 200, 0, 0, 0, 0, 0)", (user_id, user_name))
-                            pts, last_daily = 200, 0
+                            cur.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield) VALUES (?, ?, 200, 0, 0, 0, 0, 0, 'Greenhorn', 0)", (user_id, user_name))
+                            pts, last_daily, user_shield = 200, 0, 0
                         else:
-                            pts, last_daily = p_row[0], p_row[1]
+                            pts, last_daily, user_shield = p_row[0], p_row[1], p_row[2]
 
                         cur.execute("SELECT bullet, round, pot FROM roulette_runs WHERE user_id = ?", (user_id,))
                         r_row = cur.fetchone()
@@ -758,6 +840,22 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         chamber = current_round
 
                         if chamber == bullet:
+                            # Check if protected by Kevlar Shield
+                            if user_shield > 0:
+                                cur.execute("UPDATE roulette_scores SET shield = 0 WHERE user_id = ?", (user_id,))
+                                cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
+                                cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                                new_pts = cur.fetchone()[0]
+                                conn.commit()
+                                schedule_cloud_sync()
+                                self.send_json(200, {
+                                    "status": "shield_saved",
+                                    "chamber": chamber,
+                                    "new_points": new_pts,
+                                    "roast": "🛡️ Kevlar Vest ne goli rok li! Aapka 150 pts nuksaan bach gaya!"
+                                })
+                                return
+
                             # DEAD
                             cur.execute("UPDATE roulette_scores SET points = MAX(0, points - 150), streak = 0, losses = losses + 1 WHERE user_id = ?", (user_id,))
                             cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
@@ -831,6 +929,230 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                             "credited": run_pot,
                             "new_points": new_pts,
                             "streak": streak
+                        })
+                        return
+
+            elif path == "/api/slots/spin":
+                try:
+                    bet = int(body.get("bet", 50))
+                except Exception:
+                    bet = 50
+                if bet < 10 or bet > 10000:
+                    self.send_json(400, {"error": "invalid_bet"})
+                    return
+
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        p_row = cur.fetchone()
+                        if not p_row or p_row[0] < bet:
+                            conn.commit()
+                            self.send_json(200, {"status": "broke", "points": p_row[0] if p_row else 0})
+                            return
+
+                        # Cryptographically unpredictable slot reels (zero patterns)
+                        SLOT_SYMBOLS = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣", "⭐"]
+                        SLOT_WEIGHTS = [32, 24, 18, 12, 8, 4, 2] # Real casino odds
+                        r1 = rng.choices(SLOT_SYMBOLS, weights=SLOT_WEIGHTS, k=1)[0]
+                        r2 = rng.choices(SLOT_SYMBOLS, weights=SLOT_WEIGHTS, k=1)[0]
+                        r3 = rng.choices(SLOT_SYMBOLS, weights=SLOT_WEIGHTS, k=1)[0]
+                        reels = [r1, r2, r3]
+
+                        multiplier = 0.0
+                        if r1 == r2 == r3:
+                            if r1 == "7️⃣": multiplier = 50.0
+                            elif r1 == "⭐": multiplier = 30.0
+                            elif r1 == "💎": multiplier = 20.0
+                            elif r1 == "🔔": multiplier = 10.0
+                            elif r1 == "🍇": multiplier = 6.0
+                            elif r1 == "🍋": multiplier = 4.0
+                            elif r1 == "🍒": multiplier = 3.0
+                        elif r1 == r2 or r2 == r3 or r1 == r3:
+                            match_sym = r1 if (r1 == r2 or r1 == r3) else r2
+                            if match_sym == "7️⃣": multiplier = 3.0
+                            elif match_sym == "⭐": multiplier = 2.5
+                            elif match_sym == "💎": multiplier = 2.0
+                            elif match_sym == "🍒": multiplier = 1.5
+                            else: multiplier = 1.0 # Push / Bet back
+
+                        win_amount = int(bet * multiplier)
+                        net_change = win_amount - bet
+
+                        if net_change > 0:
+                            cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (net_change, user_id))
+                        elif net_change < 0:
+                            cur.execute("UPDATE roulette_scores SET points = MAX(0, points - ?), losses = losses + 1 WHERE user_id = ?", (abs(net_change), user_id))
+
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        new_pts = cur.fetchone()[0]
+                        conn.commit()
+                        schedule_cloud_sync()
+
+                        self.send_json(200, {
+                            "status": "ok",
+                            "reels": reels,
+                            "multiplier": multiplier,
+                            "win_amount": win_amount,
+                            "net_change": net_change,
+                            "new_points": new_pts
+                        })
+                        return
+
+            elif path == "/api/aviator/start":
+                try:
+                    bet = int(body.get("bet", 50))
+                except Exception:
+                    bet = 50
+                if bet < 10 or bet > 10000:
+                    self.send_json(400, {"error": "invalid_bet"})
+                    return
+
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        p_row = cur.fetchone()
+                        if not p_row or p_row[0] < bet:
+                            conn.commit()
+                            self.send_json(200, {"status": "broke", "points": p_row[0] if p_row else 0})
+                            return
+
+                        # Deduct bet upfront
+                        cur.execute("UPDATE roulette_scores SET points = points - ? WHERE user_id = ?", (bet, user_id))
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        new_pts = cur.fetchone()[0]
+
+                        # Cryptographically unpredictable Aviator crash math (4% instant crash, max 50x)
+                        r = rng.random()
+                        if r < 0.04:
+                            crash_point = 1.00 # Instant bust
+                        else:
+                            raw = 0.96 / (1.0 - r)
+                            crash_point = round(min(50.0, max(1.01, raw)), 2)
+
+                        cur.execute("INSERT OR REPLACE INTO aviator_runs (user_id, bet, crash_point, start_time) VALUES (?, ?, ?, ?)",
+                                    (user_id, bet, crash_point, time.time()))
+                        conn.commit()
+                        schedule_cloud_sync()
+
+                        self.send_json(200, {
+                            "status": "flying",
+                            "bet": bet,
+                            "new_points": new_pts
+                        })
+                        return
+
+            elif path == "/api/aviator/cashout":
+                try:
+                    multiplier = float(body.get("multiplier", 1.0))
+                except Exception:
+                    multiplier = 1.0
+
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT bet, crash_point, start_time FROM aviator_runs WHERE user_id = ?", (user_id,))
+                        run_row = cur.fetchone()
+                        if not run_row:
+                            conn.commit()
+                            self.send_json(400, {"status": "no_run"})
+                            return
+
+                        bet, crash_point, start_time = run_row[0], run_row[1], run_row[2]
+                        cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
+
+                        if multiplier <= crash_point:
+                            winnings = int(bet * multiplier)
+                            cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (winnings, user_id))
+                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                            new_pts = cur.fetchone()[0]
+                            conn.commit()
+                            schedule_cloud_sync()
+                            self.send_json(200, {
+                                "status": "cashed_out",
+                                "multiplier": multiplier,
+                                "winnings": winnings,
+                                "crash_point": crash_point,
+                                "new_points": new_pts
+                            })
+                            return
+                        else:
+                            cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                            new_pts = cur.fetchone()[0]
+                            conn.commit()
+                            schedule_cloud_sync()
+                            self.send_json(200, {
+                                "status": "crashed",
+                                "crash_point": crash_point,
+                                "new_points": new_pts
+                            })
+                            return
+
+            elif path == "/api/aviator/crashed":
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT crash_point FROM aviator_runs WHERE user_id = ?", (user_id,))
+                        run_row = cur.fetchone()
+                        crash_point = run_row[0] if run_row else 1.0
+                        cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
+                        cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        new_pts = cur.fetchone()[0]
+                        conn.commit()
+                        schedule_cloud_sync()
+                        self.send_json(200, {
+                            "status": "crashed",
+                            "crash_point": crash_point,
+                            "new_points": new_pts
+                        })
+                        return
+
+            elif path == "/api/shop/buy":
+                item_id = str(body.get("item_id", "")).strip()
+                item = SHOP_ITEMS.get(item_id)
+                if not item:
+                    self.send_json(400, {"error": "invalid_item"})
+                    return
+
+                with ROULETTE_LOCK:
+                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        cur = conn.cursor()
+                        cur.execute("SELECT points, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        p_row = cur.fetchone()
+                        if not p_row or p_row[0] < item["price"]:
+                            conn.commit()
+                            self.send_json(200, {"status": "broke", "points": p_row[0] if p_row else 0})
+                            return
+
+                        # Deduct price
+                        cur.execute("UPDATE roulette_scores SET points = points - ? WHERE user_id = ?", (item["price"], user_id))
+
+                        if item["type"] == "shield":
+                            cur.execute("UPDATE roulette_scores SET shield = 1 WHERE user_id = ?", (user_id,))
+                        elif item["type"] == "title":
+                            cur.execute("UPDATE roulette_scores SET title = ? WHERE user_id = ?", (item["name"], user_id))
+
+                        cur.execute("INSERT OR IGNORE INTO user_inventory (user_id, item_id, purchased_at) VALUES (?, ?, ?)",
+                                    (user_id, item_id, int(time.time())))
+                        cur.execute("SELECT points, shield, title FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        updated_row = cur.fetchone()
+                        new_pts, new_shield, new_title = updated_row[0], updated_row[1], updated_row[2]
+                        conn.commit()
+                        schedule_cloud_sync()
+                        self.send_json(200, {
+                            "status": "purchased",
+                            "item": item,
+                            "new_points": new_pts,
+                            "shield": new_shield,
+                            "title": new_title
                         })
                         return
 
@@ -1625,41 +1947,82 @@ def handle_start_command(message):
     token = sign_user(user_id)
 
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}"
+    
+    # Check start parameter for direct tab navigation
+    target_tab = "roulette"
+    cmd_text = message.text or ""
+    if "slots" in cmd_text:
+        target_tab = "slots"
+    elif "aviator" in cmd_text or "crash" in cmd_text:
+        target_tab = "aviator"
+    elif "shop" in cmd_text:
+        target_tab = "shop"
+
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab={target_tab}"
 
     markup = InlineKeyboardMarkup()
-    btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
+    btn_webapp = InlineKeyboardButton("🎰 Open Flash Mini-App Hub 🚀", web_app=types.WebAppInfo(url=webapp_url))
     markup.add(btn_webapp)
-
-    if message.text and "roulette" in message.text:
-        roulette_text = (
-            f"🎰 *FLASH RUSSIAN ROULETTE* 🔫\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 *Player:* {safe_name}\n"
-            f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
-            f"🎯 *Mini-App (In-App Frame)*\n"
-            f"• 🔄 Interactive 6-Chamber Rotating Cylinder\n"
-            f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
-            f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 pts\n"
-            f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
-            f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
-        )
-        bot.reply_to(message, roulette_text, reply_markup=markup, parse_mode="Markdown")
-        return
 
     welcome_text = (
         f"⚡ *Hey {safe_name}! Welcome to Flash Bot!* ⚡\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Rank Title:* `{player['title']}`\n"
         f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
-        f"🎮 *Mini-Games:*\n"
-        f"• Tap below to launch *Russian Roulette* (Interactive 3D cylinder & audio!)\n\n"
+        f"🎮 *Mini-Games & Hub:*\n"
+        f"• 🔫 *Russian Roulette* — 6-chamber cylinder, risk it or cash out!\n"
+        f"• 🎰 *Casino Slots* — 3-Reel Slots (777 Jackpot up to 50x!)\n"
+        f"• 🚀 *Aviator / Crash* — Supersonic rocket climb, cash out before crash!\n"
+        f"• 🏪 *The Shop* — Buy Kevlar Shields, Lucky Charms & VIP Titles!\n\n"
         f"💡 *Commands:*\n"
-        f"• `/balance` — Check points & server rank\n"
+        f"• `/games` — Launch Game Hub (Choose Roulette, Slots, Aviator or Shop)\n"
+        f"• `/balance` — Check points, equipped titles & shield\n"
         f"• `/daily` — Claim +100 free points daily\n"
-        f"• `/stats` — View top leaderboard\n"
-        f"• `/ping` — Check latency & uptime"
+        f"• `/stats` — View top leaderboard"
     )
     bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:games|game|casino|play|hub)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_games_command(message):
+    user = message.from_user
+    user_id = user.id
+    raw_name = user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+
+    player = get_or_create_roulette_player(user_id, safe_name)
+    token = sign_user(user_id)
+
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=lobby"
+    bot_username = "flash_billu_bot"
+
+    markup = InlineKeyboardMarkup()
+    if message.chat.type == "private":
+        btn_webapp = InlineKeyboardButton("🎮 Open Games Mini-App 🚀", web_app=types.WebAppInfo(url=webapp_url))
+        markup.add(btn_webapp)
+    else:
+        btn_miniapp = InlineKeyboardButton("🎮 Play In Telegram (Mini-App) 🚀", url=f"https://t.me/{bot_username}/roulette")
+        btn_pm = InlineKeyboardButton("💬 Open in PM (In-App Window) 🕹️", url=f"https://t.me/{bot_username}?start=games")
+        markup.row(btn_miniapp)
+        markup.row(btn_pm)
+
+    shield_status = "🛡️ Active" if player.get("shield") else "None"
+
+    games_text = (
+        f"🎮 *FLASH GAMES HUB* 🎰\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Player:* {safe_name}\n"
+        f"🎖️ *Rank Type:* `{player['title']}`\n"
+        f"💰 *Shared Balance:* `{player['points']} pts`\n"
+        f"🛡️ *Shield:* {shield_status}\n\n"
+        f"🔥 *Choose from 3 Games in the Mini-App:*\n"
+        f"1. 🔫 *Russian Roulette* — 6-Chamber survival, win up to 600 pts!\n"
+        f"2. 🎰 *Casino Slots* — 3-Reel spin, 50x Lucky 777 Jackpot!\n"
+        f"3. 🚀 *Aviator Crash* — Multiplier rocket, cash out before blast!\n"
+        f"4. 🏪 *The Shop* — Buy Shields, Charms & VIP Titles!\n\n"
+        f"👇 *Neeche button tap karke game select karein:*"
+    )
+    bot.reply_to(message, games_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:roulette|russianroulette)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_roulette_command(message):
@@ -1697,9 +2060,6 @@ def handle_roulette_command(message):
 
     token = sign_user(user_id)
 
-    # 1. Native Telegram Game (Corsair style!):
-    # If registered in @BotFather via /newgame (short name: roulette), Telegram sends a native Game card.
-    # When players tap Play, Telegram opens it strictly inside Telegram with ZERO browser redirection!
     try:
         bot.send_game(chat_id, "roulette")
         logging.info(f"Successfully sent native Telegram Game 'roulette' to chat {chat_id}")
@@ -1707,18 +2067,15 @@ def handle_roulette_command(message):
     except Exception as e:
         logging.warning(f"send_game 'roulette' not registered yet or failed: {e}")
 
-    # 2. Fallback for group / PM before BotFather /newgame registration:
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
-    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}"
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=roulette"
     bot_username = "flash_billu_bot"
 
     markup = InlineKeyboardMarkup()
     if message.chat.type == "private":
-        # In PM: Native WebApp button opens 100% inside Telegram
         btn_webapp = InlineKeyboardButton("🎰 Launch Roulette Mini-App 🔫", web_app=types.WebAppInfo(url=webapp_url))
         markup.add(btn_webapp)
     else:
-        # In Groups: Use Telegram internal Mini-App link + PM in-app launcher (No external browser!)
         btn_miniapp = InlineKeyboardButton("🎰 Play In Telegram (Mini-App) 🔫", url=f"https://t.me/{bot_username}/roulette")
         btn_pm = InlineKeyboardButton("💬 Play in PM (In-App Window) 🚀", url=f"https://t.me/{bot_username}?start=roulette")
         markup.row(btn_miniapp)
@@ -1737,6 +2094,106 @@ def handle_roulette_command(message):
         f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
     )
     bot.reply_to(message, intro_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:slots|slot)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_slots_command(message):
+    user_id = message.from_user.id
+    raw_name = message.from_user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+    player = get_or_create_roulette_player(user_id, safe_name)
+    token = sign_user(user_id)
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=slots"
+    bot_username = "flash_billu_bot"
+
+    markup = InlineKeyboardMarkup()
+    if message.chat.type == "private":
+        btn_webapp = InlineKeyboardButton("🎰 Open Slots Machine 🍒", web_app=types.WebAppInfo(url=webapp_url))
+        markup.add(btn_webapp)
+    else:
+        btn_pm = InlineKeyboardButton("🎰 Play Slots in PM 🚀", url=f"https://t.me/{bot_username}?start=slots")
+        markup.row(btn_pm)
+
+    slots_text = (
+        f"🎰 *FLASH CASINO SLOTS* 🍒\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Player:* {safe_name}\n"
+        f"💰 *Shared Wallet:* `{player['points']} pts`\n\n"
+        f"✨ *Combos & Multipliers:*\n"
+        f"• 7️⃣ 7️⃣ 7️⃣ ➜ *50x Mega Jackpot!*\n"
+        f"• ⭐ ⭐ ⭐ ➜ *30x Wild Star!*\n"
+        f"• 💎 💎 💎 ➜ *20x Diamond Vault!*\n"
+        f"• 🔔 🔔 🔔 ➜ *10x Golden Bell!*\n"
+        f"• 🍇 🍇 🍇 ➜ *6x Juicy Grapes!*\n\n"
+        f"👇 *Neeche button tap karke khelo:*"
+    )
+    bot.reply_to(message, slots_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:aviator|crash)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_aviator_command(message):
+    user_id = message.from_user.id
+    raw_name = message.from_user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+    player = get_or_create_roulette_player(user_id, safe_name)
+    token = sign_user(user_id)
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=aviator"
+    bot_username = "flash_billu_bot"
+
+    markup = InlineKeyboardMarkup()
+    if message.chat.type == "private":
+        btn_webapp = InlineKeyboardButton("🚀 Launch Aviator Flight 💥", web_app=types.WebAppInfo(url=webapp_url))
+        markup.add(btn_webapp)
+    else:
+        btn_pm = InlineKeyboardButton("🚀 Play Aviator in PM 💬", url=f"https://t.me/{bot_username}?start=aviator")
+        markup.row(btn_pm)
+
+    aviator_text = (
+        f"🚀 *FLASH AVIATOR / CRASH* 💥\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Player:* {safe_name}\n"
+        f"💰 *Shared Wallet:* `{player['points']} pts`\n\n"
+        f"🎯 *Game Highlights:*\n"
+        f"• Rocket take off karti hai aur multiplier `1.00x` se badhta jata hai!\n"
+        f"• Blast hone se pehle *CASH OUT* karo aur apna multiplier claim karo!\n"
+        f"• Truly unpredictable cryptographic crash, zero pattern!\n\n"
+        f"👇 *Neeche button tap karke khelo:*"
+    )
+    bot.reply_to(message, aviator_text, reply_markup=markup, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:shop|market|store)(?:@\w+)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_shop_command(message):
+    user_id = message.from_user.id
+    raw_name = message.from_user.first_name or "Friend"
+    safe_name = clean_player_name(raw_name)
+    player = get_or_create_roulette_player(user_id, safe_name)
+    token = sign_user(user_id)
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://flash-bot-8i1m.onrender.com').rstrip('/')
+    webapp_url = f"{render_url}/roulette?user_id={user_id}&user_name={urllib.parse.quote(safe_name)}&token={token}&tab=shop"
+    bot_username = "flash_billu_bot"
+
+    markup = InlineKeyboardMarkup()
+    if message.chat.type == "private":
+        btn_webapp = InlineKeyboardButton("🏪 Open Points Shop 🛡️", web_app=types.WebAppInfo(url=webapp_url))
+        markup.add(btn_webapp)
+    else:
+        btn_pm = InlineKeyboardButton("🏪 Open Shop in PM 💬", url=f"https://t.me/{bot_username}?start=shop")
+        markup.row(btn_pm)
+
+    shop_text = (
+        f"🏪 *THE UNDERGROUND POINTS SHOP* 🛡️\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *Customer:* {safe_name} ({player['title']})\n"
+        f"💰 *Available Points:* `{player['points']} pts`\n\n"
+        f"🛒 *Available Items:*\n"
+        f"• 🛡️ *Kevlar Vest* (`500 pts`) — Roulette me 1 bullet absorb karta hai!\n"
+        f"• 🍀 *Lucky Clover* (`800 pts`) — Golden gambler talisman badge\n"
+        f"• 👑 *Mafia Don Title* (`2,500 pts`) — VIP Telegram badge & rank\n"
+        f"• 💎 *High Roller* (`5,000 pts`) — Elite casino status\n"
+        f"• 💀 *Death Defier* (`10,000 pts`) — Supreme Russian Roulette master\n\n"
+        f"👇 *Neeche button tap karke shop kholein:*"
+    )
+    bot.reply_to(message, shop_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: getattr(call, 'game_short_name', None) is not None)
 def handle_game_callback(call):
@@ -1768,7 +2225,7 @@ def handle_game_callback(call):
 def handle_balance_command(message):
     """
     ZERO-TOKEN /balance command:
-    Displays user wallet, leaderboard rank, current streak, and casino survival stats.
+    Displays user wallet, leaderboard rank, equipped titles, shields, and casino stats.
     """
     user = message.from_user
     user_id = user.id
@@ -1779,6 +2236,10 @@ def handle_balance_command(message):
     pts = player["points"]
     streak = player["streak"]
     best_streak = player["best_streak"]
+    title = player.get("title", "Greenhorn")
+    shield = player.get("shield", 0)
+    shield_status = "🛡️ ACTIVE (Protected)" if shield > 0 else "❌ NONE (`/shop` to buy)"
+
     wins = player.get("wins", 0)
     losses = player.get("losses", 0)
     total_games = wins + losses
@@ -1799,16 +2260,21 @@ def handle_balance_command(message):
         f"💳 *FLASH CASINO WALLET & STATS*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
+        f"🎖️ *VIP Title:* `{title}`\n"
+        f"🛡️ *Kevlar Shield:* {shield_status}\n"
         f"💰 *Balance:* `{pts} Points`\n"
         f"{rank_icon} *Leaderboard Rank:* `#{rank}`\n\n"
-        f"📊 *Roulette Performance:*\n"
+        f"📊 *Game Performance:*\n"
         f"🔥 Current Streak: `{streak}`\n"
         f"🏆 Best Streak: `{best_streak}`\n"
-        f"✅ Total Survivals: `{wins}`\n"
-        f"💀 Total Deaths: `{losses}`\n"
-        f"🎯 Survival Rate: `{win_rate}`\n\n"
-        f"💡 _Quick Actions:_\n"
-        f"• `/roulette` — Risk it to multiply points!\n"
+        f"✅ Total Wins / Survivals: `{wins}`\n"
+        f"💀 Total Losses / Deaths: `{losses}`\n"
+        f"🎯 Win Rate: `{win_rate}`\n\n"
+        f"💡 _Quick Games & Actions:_\n"
+        f"• `/roulette` — Russian Roulette\n"
+        f"• `/slots` — 3-Reel Slot Machine\n"
+        f"• `/aviator` — Rocket Crash Game\n"
+        f"• `/shop` — Purchase Shields & VIP Titles\n"
         f"• `/daily` — Claim +100 free points daily\n"
         f"• `/stats` — View top survivors leaderboard"
     )

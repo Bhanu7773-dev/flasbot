@@ -3,175 +3,526 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Flash Russian Roulette</title>
+<title>Flash Games Hub</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Rye&family=Special+Elite&display=swap" rel="stylesheet">
 <style>
 :root{
-  --wood:#24150c; --wood-2:#33200f; --plank:#4a2f18;
-  --paper:#e6d2a2; --paper-dk:#cdb582; --ink:#2a1a0c;
-  --rust:#9c2f1e; --brass:#c08a2e; --iron:#2b2b2e; --sage:#4f6b3a;
-  --display:'Rye',Georgia,serif; --type:'Special Elite','Courier New',monospace;
-  --g:16px; /* single gutter used everywhere */
+  --wood:#1f130a; --wood-2:#2a180d; --plank:#3b2210;
+  --paper:#e6d2a2; --paper-dk:#cdb582; --ink:#221509;
+  --rust:#9c2f1e; --brass:#c08a2e; --iron:#1a191a; --sage:#4f6b3a;
+  --gold:#f5c042; --gold-glow:rgba(245,192,66,0.35);
+  --cyan:#2ad0e8; --crimson:#dc2626;
+  --display:'Rye',Georgia,serif; --type:'Special Elite','Courier New',monospace; --sans:'Outfit',system-ui,sans-serif;
+  --g:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
-html,body{height:100%}
+html,body{height:100%;overflow-x:hidden}
 body{
   background:var(--wood);
-  background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 2px,transparent 2px 64px),
+  background-image:repeating-linear-gradient(90deg,rgba(0,0,0,.35) 0 2px,transparent 2px 64px),
     repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 1px,transparent 1px 7px);
   color:var(--paper);font-family:var(--type);
-  padding:max(var(--g),env(safe-area-inset-top)) var(--g) max(var(--g),env(safe-area-inset-bottom));
+  padding:max(10px,env(safe-area-inset-top)) 12px max(14px,env(safe-area-inset-bottom));
   display:flex;justify-content:center;
 }
-/* one column, one gap: everything shares the same left/right edges */
-.wrap{width:100%;max-width:420px;display:grid;grid-template-rows:auto 1fr auto;gap:var(--g)}
+.wrap{width:100%;max-width:440px;display:flex;flex-direction:column;gap:10px}
 
-/* header plank */
-.plank{display:grid;grid-template-columns:48px 1fr auto;align-items:center;column-gap:12px;height:72px;padding:0 var(--g);
-  background:linear-gradient(180deg,var(--plank),#3a2412);border:2px solid #1a0e06;border-radius:6px;
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.1),0 6px 0 #130a04}
-.avatar{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--paper);color:var(--rust);
-  border:3px solid var(--brass);font-family:var(--display);font-size:22px;line-height:1}
+/* Top persistent plank */
+.plank{
+  display:grid;grid-template-columns:46px 1fr auto auto;align-items:center;column-gap:10px;height:66px;padding:0 12px;
+  background:linear-gradient(180deg,var(--plank),#2b1709);border:2px solid #140a04;border-radius:8px;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.12),0 5px 0 #0d0603;position:relative;
+}
+.avatar{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--paper);color:var(--rust);
+  border:3px solid var(--brass);font-family:var(--display);font-size:22px;line-height:1;box-shadow:0 3px 6px rgba(0,0,0,.4)}
 .who{min-width:0}
-.name{font-family:var(--display);font-size:17px;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank{font-size:12px;color:var(--paper-dk);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.name{font-family:var(--display);font-size:16px;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge-row{display:flex;align-items:center;gap:6px;margin-top:2px}
+.rank{font-size:11px;color:var(--paper-dk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shield-tag{background:var(--sage);color:#fff;font-size:9px;padding:2px 5px;border-radius:4px;font-family:var(--sans);font-weight:600;display:none}
+.shield-tag.active{display:inline-block}
 .wallet{display:grid;justify-items:end;row-gap:2px}
-.wallet small{font-size:11px;color:var(--paper-dk)}
-.wallet b{font-family:var(--display);font-weight:400;font-size:24px;line-height:1;color:var(--brass)}
+.wallet small{font-size:10px;color:var(--paper-dk);text-transform:uppercase;letter-spacing:.5px}
+.wallet b{font-family:var(--display);font-weight:400;font-size:22px;line-height:1;color:var(--gold);transition:transform .2s,color .2s}
+.wallet b.glow{transform:scale(1.15);color:#fff}
+.audio-toggle{width:32px;height:32px;border-radius:6px;border:1px solid #1a0f07;background:#24140a;color:var(--paper);display:grid;place-items:center;font-size:14px;cursor:pointer}
 
-/* poster */
-.poster{position:relative;display:grid;grid-template-rows:auto auto auto 1fr auto;justify-items:center;row-gap:var(--g);
-  padding:calc(var(--g) + 8px) var(--g) var(--g);color:var(--ink);
+/* Tabs Bar */
+.tabs{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:#180d06;padding:4px;border-radius:8px;
+  border:2px solid #2e1a0d;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);
+}
+.tab-btn{
+  background:transparent;border:0;color:var(--paper-dk);padding:6px 0;border-radius:6px;
+  font-family:var(--sans);font-size:11px;font-weight:600;cursor:pointer;display:flex;flex-direction:column;
+  align-items:center;gap:2px;transition:all .2s;
+}
+.tab-btn i{font-style:normal;font-size:15px}
+.tab-btn.active{
+  background:linear-gradient(180deg,#c08a2e,#825a17);color:#fff;
+  box-shadow:0 2px 5px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.3);transform:translateY(-1px);
+}
+
+/* Back to Lobby bar */
+.back-hub-bar{
+  display:flex;align-items:center;justify-content:space-between;background:#1c0f07;
+  border:1px solid #3d220e;border-radius:6px;padding:6px 12px;margin-bottom:2px;
+}
+.back-btn{
+  background:transparent;border:0;color:var(--gold);font-family:var(--sans);font-weight:600;font-size:12px;
+  cursor:pointer;display:flex;align-items:center;gap:4px;
+}
+.back-title{font-size:12px;color:var(--paper-dk)}
+
+/* Tab panes */
+.tab-pane{display:none;flex-direction:column;gap:10px;animation:fadeIn .25s ease-out}
+.tab-pane.active{display:flex}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* --- TAB 0: LOBBY / GAMES SELECTOR --- */
+.lobby-header{
+  text-align:center;padding:10px 14px;background:radial-gradient(ellipse at center,#3a2010,#1a0c05);
+  border:2px solid #573719;border-radius:8px;box-shadow:0 4px 0 #0d0603;
+}
+.lobby-header h2{font-family:var(--display);font-size:22px;color:var(--gold);text-shadow:0 0 10px rgba(245,192,66,.5)}
+.lobby-header p{font-size:12px;color:var(--paper-dk);margin-top:2px}
+
+.game-cards-list{display:flex;flex-direction:column;gap:10px}
+.game-card{
+  position:relative;background:linear-gradient(180deg,#2e1b0d,#1b0f07);border:2px solid #4a2b13;
+  border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;cursor:pointer;
+  box-shadow:0 5px 0 #0f0703,inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s;
+}
+.game-card:active{transform:translateY(2px);box-shadow:0 2px 0 #0f0703}
+.game-badge{
+  position:absolute;right:12px;top:10px;font-family:var(--sans);font-weight:800;font-size:9px;
+  padding:2px 6px;border-radius:4px;letter-spacing:.5px;text-transform:uppercase;
+}
+.game-badge.survival{background:#9c2f1e;color:#fff}
+.game-badge.jackpot{background:#c08a2e;color:#fff}
+.game-badge.crash{background:#7c3aed;color:#fff}
+.game-badge.shop{background:#166534;color:#fff}
+
+.game-card-head{display:flex;align-items:center;gap:12px}
+.game-icon{width:44px;height:44px;border-radius:8px;background:#140b05;border:2px solid #543317;display:grid;place-items:center;font-size:24px}
+.game-meta h3{font-family:var(--sans);font-size:16px;color:var(--paper);font-weight:700}
+.game-type-tag{font-size:11px;color:var(--paper-dk)}
+.game-desc{font-size:12px;color:#c0a980;line-height:1.35}
+.game-card-footer{
+  display:flex;justify-content:space-between;align-items:center;border-top:1px dashed #3a220e;padding-top:8px;
+}
+.game-limits{font-size:11px;color:var(--paper-dk)}
+.game-limits b{color:var(--gold)}
+.game-play-btn{
+  height:32px;padding:0 14px;border-radius:5px;font-family:var(--sans);font-weight:700;font-size:12px;
+  border:1px solid #140903;cursor:pointer;background:linear-gradient(180deg,#b63a26,#852414);color:#fff;
+  transition:all .12s;
+}
+.game-play-btn.gold{background:linear-gradient(180deg,#c08a2e,#754f12)}
+.game-play-btn.purple{background:linear-gradient(180deg,#8b5cf6,#6d28d9)}
+.game-play-btn.green{background:linear-gradient(180deg,#22c55e,#15803d)}
+
+/* Shared action buttons */
+.btn{display:grid;grid-template-columns:1fr auto;align-items:center;height:54px;padding:0 16px;border-radius:6px;cursor:pointer;
+  font-family:var(--display);font-size:18px;text-align:left;border:2px solid #140a04;transition:transform .12s,opacity .2s}
+.btn small{font-family:var(--type);font-size:13px;opacity:.9}
+.btn:active{transform:translateY(2px)}
+.fire{background:linear-gradient(180deg,#c23923,var(--rust));color:var(--paper);box-shadow:inset 0 2px 0 rgba(255,255,255,.25),0 4px 0 #130a04}
+.cash{background:linear-gradient(180deg,#e5a93e,var(--brass));color:var(--ink);box-shadow:inset 0 2px 0 rgba(255,255,255,.3),0 4px 0 #130a04}
+.action-green{background:linear-gradient(180deg,#429b47,#2b6d30);color:#fff;box-shadow:inset 0 2px 0 rgba(255,255,255,.25),0 4px 0 #112814}
+.btn.off{opacity:.45;pointer-events:none}
+
+/* Bet chips selector */
+.chips-row{display:flex;gap:6px;width:100%;justify-content:center}
+.chip{
+  flex:1;height:38px;background:linear-gradient(180deg,#3a2211,#221308);border:2px solid #170d06;border-radius:6px;
+  color:var(--paper);font-family:var(--sans);font-weight:600;font-size:13px;cursor:pointer;
+  display:grid;place-items:center;transition:all .15s;
+}
+.chip.active{background:linear-gradient(180deg,#c08a2e,#754f12);color:#fff;border-color:#ecd28c;box-shadow:0 0 8px var(--gold-glow)}
+
+/* --- TAB 1: ROULETTE --- */
+.poster{position:relative;display:grid;grid-template-rows:auto auto auto 1fr auto;justify-items:center;row-gap:8px;
+  padding:12px 10px 10px;color:var(--ink);
   background:radial-gradient(120% 90% at 50% 40%,var(--paper),var(--paper-dk));
-  border:3px solid var(--ink);border-radius:4px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 8px 0 #130a04}
-.poster::before,.poster::after{content:"";position:absolute;top:10px;width:10px;height:10px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#d9b46a,#6e4d17);box-shadow:0 1px 1px rgba(0,0,0,.5)}
-.poster::before{left:10px}.poster::after{right:10px}
-.title{font-family:var(--display);font-size:30px;line-height:1;text-align:center}
-.round{font-size:13px;text-align:center;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:5px 0;width:100%}
-.reward{display:grid;justify-items:center;row-gap:4px;width:100%}
-.reward small{font-size:13px}
-.pot{font-family:var(--display);font-size:56px;line-height:1;color:var(--rust);display:flex;align-items:baseline;justify-content:center;gap:8px}
-.pot i{font-style:normal;font-size:18px;color:var(--ink)}
-.pot.bump{animation:bump .4s ease}
+  border:3px solid var(--ink);border-radius:6px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 8px 0 #130a04}
+.title{font-family:var(--display);font-size:26px;line-height:1;text-align:center}
+.round{font-size:12px;text-align:center;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:4px 0;width:100%}
+.reward{display:grid;justify-items:center;row-gap:2px;width:100%}
+.reward small{font-size:11px}
+.pot{font-family:var(--display);font-size:46px;line-height:1;color:var(--rust);display:flex;align-items:baseline;justify-content:center;gap:6px}
+.pot i{font-style:normal;font-size:16px;color:var(--ink)}
+.pot.bump{animation:bump .35s ease}
 @keyframes bump{40%{transform:scale(1.08)}}
-
-.ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;width:100%}
-.rung{display:grid;justify-items:center;row-gap:2px;padding:6px 0;border:2px solid var(--ink);border-radius:3px;font-size:11px;transition:.25s}
-.rung b{font-family:var(--display);font-weight:400;font-size:14px}
+.ladder{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;width:100%}
+.rung{display:grid;justify-items:center;row-gap:1px;padding:4px 0;border:2px solid var(--ink);border-radius:3px;font-size:10px;transition:.25s}
+.rung b{font-family:var(--display);font-weight:400;font-size:12px}
 .rung.done{background:var(--sage);color:var(--paper);border-color:#2c3d20}
 .rung.now{background:var(--ink);color:var(--paper)}
-
-.cyl{width:min(100%,220px);aspect-ratio:1;align-self:center;position:relative}
+.cyl{width:min(100%,180px);aspect-ratio:1;align-self:center;position:relative}
 .notch{position:absolute;left:50%;top:-8px;transform:translateX(-50%);border:9px solid transparent;border-top:14px solid var(--rust);border-bottom:0;z-index:2}
-#revolverSvg{width:100%;height:100%;display:block;transition:transform .9s cubic-bezier(.12,.8,.25,1);filter:drop-shadow(0 8px 6px rgba(0,0,0,.45))}
-.chamber{transition:fill .3s,stroke .3s}
-
-.status{width:100%;height:44px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;line-height:1.25;border-top:2px dashed var(--ink);padding-top:var(--g);box-sizing:content-box}
+#revolverSvg{width:100%;height:100%;display:block;transition:transform .9s cubic-bezier(.12,.8,.25,1);filter:drop-shadow(0 6px 5px rgba(0,0,0,.45))}
+.status{width:100%;height:38px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px;line-height:1.2;border-top:2px dashed var(--ink);padding-top:8px}
 .status b{font-family:var(--display);font-weight:400}
 .status.bad{color:var(--rust)}.status.good{color:var(--sage)}
+.note{text-align:center;font-size:11px;color:var(--paper-dk);line-height:1.3}
 
-/* actions: identical rows, label left / value right */
-.actions{display:grid;gap:12px}
-.btn{display:grid;grid-template-columns:1fr auto;align-items:center;height:60px;padding:0 20px;border-radius:4px;cursor:pointer;
-  font-family:var(--display);font-size:20px;text-align:left;border:3px solid #1a0e06;transition:transform .12s,opacity .2s}
-.btn small{font-family:var(--type);font-size:14px;opacity:.9}
-.btn:active{transform:translateY(2px)}
-.btn:focus-visible{outline:3px solid var(--paper);outline-offset:2px}
-.fire{background:linear-gradient(180deg,#b63a26,var(--rust));color:var(--paper);box-shadow:inset 0 2px 0 rgba(255,255,255,.25),0 5px 0 #130a04}
-.cash{background:linear-gradient(180deg,#d29c3e,var(--brass));color:var(--ink);box-shadow:inset 0 2px 0 rgba(255,255,255,.3),0 5px 0 #130a04}
-.btn.off{opacity:.45;pointer-events:none}
-.note{text-align:center;font-size:12px;color:var(--paper-dk);line-height:1.4}
-.note.warn{color:#ff9a86}
+/* --- TAB 2: SLOTS --- */
+.slot-cabinet{
+  background:radial-gradient(ellipse at center,#3a2010,#1a0c05);border:3px solid #63401c;border-radius:10px;
+  padding:12px;box-shadow:inset 0 0 15px rgba(0,0,0,.8),0 8px 0 #0d0603;display:flex;flex-direction:column;gap:10px;
+}
+.slot-header{text-align:center;border-bottom:2px dashed #4e3016;padding-bottom:6px}
+.slot-header h2{font-family:var(--display);font-size:20px;color:var(--gold);text-shadow:0 0 8px rgba(245,192,66,.5)}
+.slot-header p{font-size:11px;color:var(--paper-dk)}
+.reels-stage{
+  position:relative;background:#0c0602;border:3px solid #9c7128;border-radius:8px;padding:8px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;box-shadow:inset 0 0 15px rgba(0,0,0,.9);overflow:hidden;
+}
+.win-line-guide{
+  position:absolute;left:0;right:0;top:50%;height:4px;background:rgba(245,192,66,.45);
+  transform:translateY(-50%);pointer-events:none;z-index:5;box-shadow:0 0 10px rgba(245,192,66,.8);
+}
+.reel-box{
+  height:120px;background:linear-gradient(180deg,#1c1007 0%,#3d2512 50%,#1c1007 100%);
+  border:2px solid #5a3818;border-radius:6px;overflow:hidden;position:relative;display:grid;place-items:center;
+}
+.reel-strip{
+  position:absolute;width:100%;display:flex;flex-direction:column;align-items:center;
+  transition:transform .4s cubic-bezier(.12,.8,.25,1);
+}
+.symbol{height:120px;display:flex;align-items:center;justify-content:center;font-size:48px;line-height:1}
+.reels-stage.spinning .reel-strip{filter:blur(3px)}
+.slot-banner{
+  background:#170a04;border:1px solid #4a2810;border-radius:6px;padding:8px 12px;
+  display:flex;justify-content:space-between;align-items:center;font-size:13px;
+}
+.slot-banner b{color:var(--gold);font-family:var(--sans);font-size:15px}
+.paytable-card{
+  background:#190e06;border:1px solid #3d2310;border-radius:6px;padding:8px;font-size:11px;
+  color:var(--paper-dk);display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;
+}
+.paytable-card span{background:#29160a;padding:3px;border-radius:4px;border:1px solid #3c200e}
 
-/* result */
-.sheet{position:fixed;inset:0;background:rgba(15,8,3,.82);display:none;align-items:center;justify-content:center;padding:var(--g);z-index:50}
+/* --- TAB 3: AVIATOR --- */
+.aviator-arena{
+  background:radial-gradient(ellipse at 50% 60%,#1a102b,#0c0717);border:2px solid #462c72;border-radius:10px;
+  padding:12px;box-shadow:inset 0 0 20px rgba(0,0,0,.8),0 8px 0 #07030e;display:flex;flex-direction:column;gap:10px;
+}
+.history-bar{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.hist-pill{
+  padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700;font-family:var(--sans);
+  background:#26183d;color:#a985e8;white-space:nowrap;border:1px solid #3f2766;
+}
+.hist-pill.big{background:#4d2d0b;color:#f3bf4b;border-color:#845517}
+.radar-screen{
+  width:100%;height:200px;background:#0d0718;border:2px solid #331e54;border-radius:8px;
+  position:relative;overflow:hidden;box-shadow:inset 0 0 25px rgba(0,0,0,.9);
+}
+#radarCanvas{width:100%;height:100%;display:block}
+.multiplier-hud{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;
+  text-align:center;z-index:5;
+}
+.mult-val{font-family:var(--sans);font-weight:800;font-size:44px;line-height:1;color:#fff;text-shadow:0 0 15px rgba(234,179,8,0.7)}
+.mult-val.crashed{color:var(--crimson);text-shadow:0 0 15px rgba(220,38,38,0.8)}
+.mult-val.won{color:#4ade80;text-shadow:0 0 15px rgba(74,222,128,0.8)}
+.mult-label{font-size:11px;color:#a899c2;letter-spacing:1px;margin-top:2px}
+.aviator-status{text-align:center;font-size:12px;font-family:var(--sans);color:#c4b5fd;min-height:18px}
+
+/* --- TAB 4: SHOP --- */
+.shop-catalog{display:flex;flex-direction:column;gap:8px}
+.shop-card{
+  background:linear-gradient(180deg,#2f1c0f,#1c1008);border:2px solid #3f2613;border-radius:8px;
+  padding:12px;display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;
+  box-shadow:0 4px 0 #0d0603;
+}
+.shop-icon{width:46px;height:46px;border-radius:8px;background:#130b05;border:2px solid #57361a;display:grid;place-items:center;font-size:24px}
+.shop-info h3{font-family:var(--sans);font-size:15px;color:var(--paper);font-weight:600}
+.shop-info p{font-size:11px;color:var(--paper-dk);line-height:1.25;margin-top:2px}
+.shop-btn{
+  height:36px;padding:0 12px;border-radius:6px;font-family:var(--sans);font-weight:700;font-size:12px;
+  border:1px solid #140903;cursor:pointer;background:linear-gradient(180deg,#c08a2e,#7c5617);color:#fff;
+  white-space:nowrap;transition:all .15s;
+}
+.shop-btn.owned{background:#233519;color:#85c76e;border-color:#365525;cursor:default}
+
+/* Outcome Modal */
+.sheet{position:fixed;inset:0;background:rgba(12,6,2,.85);display:none;align-items:center;justify-content:center;padding:14px;z-index:50}
 .sheet.show{display:flex}
-.card{width:100%;max-width:388px;display:grid;justify-items:center;row-gap:12px;text-align:center;padding:28px var(--g) var(--g);
-  background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:4px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 10px 0 #130a04;animation:pop .3s ease-out}
+.card{width:100%;max-width:380px;display:grid;justify-items:center;row-gap:10px;text-align:center;padding:22px 14px 14px;
+  background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:6px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 10px 0 #130a04;animation:pop .3s ease-out}
 @keyframes pop{from{transform:scale(.92);opacity:0}}
-.card h2{font-family:var(--display);font-weight:400;font-size:30px;line-height:1.1}
-.card p{font-size:14px;line-height:1.45}
-.delta{width:100%;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:10px 0;font-family:var(--display);font-size:42px;line-height:1}
-.card .btn{width:100%;margin-top:4px;grid-template-columns:1fr}
+.card h2{font-family:var(--display);font-size:26px;line-height:1.1}
+.card p{font-size:13px;line-height:1.4}
+.delta{width:100%;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:8px 0;font-family:var(--display);font-size:36px;line-height:1}
+.card .btn{width:100%;margin-top:4px;grid-template-columns:1fr;text-align:center}
 .card .btn span{text-align:center}
 .shake{animation:shake .55s both}
 @keyframes shake{20%,60%{transform:translate(-6px,3px) rotate(-.6deg)}40%,80%{transform:translate(6px,-3px) rotate(.6deg)}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media (max-height:720px){.cyl{width:min(100%,170px)}.pot{font-size:44px}.title{font-size:26px}}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <!-- Top Persistent Plank (Name, Type/Rank, and Shared Wallet) -->
   <div class="plank">
     <div class="avatar" id="playerAvatar">?</div>
-    <div class="who"><div class="name" id="playerName">Loading</div><div class="rank" id="playerRank">Greenhorn</div></div>
-    <div class="wallet"><small>Wallet</small><b id="playerBalance">0</b></div>
-  </div>
-
-  <div class="poster" id="arenaCard">
-    <div class="title">Dead or alive?</div>
-    <div class="round" id="roundBadge">Round 1 of 5</div>
-    <div class="reward"><small>Reward</small><div class="pot" id="potValue">50<i>pts</i></div></div>
-    <div class="cyl">
-      <div class="notch"></div>
-      <svg id="revolverSvg" viewBox="0 0 200 200" aria-label="Revolver cylinder">
-        <defs>
-          <radialGradient id="steel" cx="35%" cy="30%" r="85%"><stop offset="0" stop-color="#6f6a62"/><stop offset=".55" stop-color="#34322f"/><stop offset="1" stop-color="#171615"/></radialGradient>
-          <radialGradient id="brs" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#f0d38a"/><stop offset="1" stop-color="#7d5a1c"/></radialGradient>
-        </defs>
-        <circle cx="100" cy="100" r="94" fill="url(#steel)" stroke="#0e0c0a" stroke-width="3"/>
-        <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,255,255,.14)"/>
-        <g id="flutes" fill="#0f0e0d"></g>
-        <circle cx="100" cy="100" r="25" fill="url(#brs)" stroke="#0e0c0a" stroke-width="2"/>
-        <circle cx="100" cy="100" r="7" fill="#1a1205"/>
-        <circle id="slot1" class="chamber" cx="100" cy="42" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-        <circle id="slot2" class="chamber" cx="150" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-        <circle id="slot3" class="chamber" cx="150" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-        <circle id="slot4" class="chamber" cx="100" cy="158" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-        <circle id="slot5" class="chamber" cx="50" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-        <circle id="slot6" class="chamber" cx="50" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
-      </svg>
+    <div class="who">
+      <div class="name" id="playerName">Loading...</div>
+      <div class="badge-row">
+        <span class="rank" id="playerRank">Greenhorn</span>
+        <span class="shield-tag" id="shieldTag">🛡️ VEST</span>
+      </div>
     </div>
-    <div class="ladder" id="ladder"></div>
-    <div class="status" id="statusBanner">Spin the cylinder, then pull the trigger.</div>
+    <div class="wallet">
+      <small>Wallet</small>
+      <b id="playerBalance">0</b>
+    </div>
+    <button class="audio-toggle" id="btnAudioToggle" title="Sound">🔊</button>
   </div>
 
-  <div class="actions">
-    <button class="btn fire" id="btnFire"><span id="btnFireText">Pull trigger</span><small id="btnFireSub">+50 pts</small></button>
-    <button class="btn cash" id="btnCashout" style="display:none"><span>Cash out</span><small id="btnCashoutText">+0 pts</small></button>
-    <div class="note" id="subNotice">If the live round fires, you lose 150 pts from your wallet.</div>
+  <!-- Tabs Navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="lobby"><i>🏠</i><span>Hub</span></button>
+    <button class="tab-btn" data-tab="roulette"><i>🔫</i><span>Roulette</span></button>
+    <button class="tab-btn" data-tab="slots"><i>🎰</i><span>Slots</span></button>
+    <button class="tab-btn" data-tab="aviator"><i>🚀</i><span>Aviator</span></button>
+    <button class="tab-btn" data-tab="shop"><i>🏪</i><span>Shop</span></button>
+  </div>
+
+  <!-- TAB 0: LOBBY / GAMES SELECTOR -->
+  <div class="tab-pane active" id="pane-lobby">
+    <div class="lobby-header">
+      <h2>FLASH CASINO HUB</h2>
+      <p>Choose an option below • Shared Points Wallet</p>
+    </div>
+
+    <div class="game-cards-list">
+      <!-- Option 1: Russian Roulette -->
+      <div class="game-card" data-target="roulette">
+        <div class="game-badge survival">SURVIVAL</div>
+        <div class="game-card-head">
+          <div class="game-icon">🔫</div>
+          <div class="game-meta">
+            <h3>Russian Roulette</h3>
+            <span class="game-type-tag">Push Your Luck • 6-Chamber Revolver</span>
+          </div>
+        </div>
+        <p class="game-desc">Cock the hammer and test your fate! Survive up to 5 rounds to multiply your pot up to +600 pts, or cash out safely.</p>
+        <div class="game-card-footer">
+          <div class="game-limits">Risk: <b>150 pts</b> | Jackpot: <b>+600 pts</b></div>
+          <button class="game-play-btn">PLAY ROULETTE 🔫</button>
+        </div>
+      </div>
+
+      <!-- Option 2: Slots -->
+      <div class="game-card" data-target="slots">
+        <div class="game-badge jackpot">50x JACKPOT</div>
+        <div class="game-card-head">
+          <div class="game-icon">🎰</div>
+          <div class="game-meta">
+            <h3>Casino Slots</h3>
+            <span class="game-type-tag">High Roller 3-Reels • Unpredictable RNG</span>
+          </div>
+        </div>
+        <p class="game-desc">Spin authentic physical reels. Match 3 lucky 7s for the huge 50x Mega Jackpot! Zero repeating patterns.</p>
+        <div class="game-card-footer">
+          <div class="game-limits">Bets: <b>50 - 500 pts</b> | Multiplier: <b>Up to 50x</b></div>
+          <button class="game-play-btn gold">SPIN SLOTS 🎰</button>
+        </div>
+      </div>
+
+      <!-- Option 3: Aviator Crash -->
+      <div class="game-card" data-target="aviator">
+        <div class="game-badge crash">MULTIPLIER</div>
+        <div class="game-card-head">
+          <div class="game-icon">🚀</div>
+          <div class="game-meta">
+            <h3>Aviator Crash</h3>
+            <span class="game-type-tag">Supersonic Rocket • Live Cash Out</span>
+          </div>
+        </div>
+        <p class="game-desc">Watch the rocket climb and multiplier soar in real-time. Hit Cash Out before the rocket explodes in mid-air!</p>
+        <div class="game-card-footer">
+          <div class="game-limits">Bets: <b>50 - 500 pts</b> | Multiplier: <b>1.0x - 50x+</b></div>
+          <button class="game-play-btn purple">LAUNCH AVIATOR 🚀</button>
+        </div>
+      </div>
+
+      <!-- Option 4: Shop -->
+      <div class="game-card" data-target="shop">
+        <div class="game-badge shop">ARMORY</div>
+        <div class="game-card-head">
+          <div class="game-icon">🏪</div>
+          <div class="game-meta">
+            <h3>Underground Shop</h3>
+            <span class="game-type-tag">Kevlar Vest • VIP Titles • Badges</span>
+          </div>
+        </div>
+        <p class="game-desc">Buy Kevlar Shields to survive Roulette deaths, Golden Clovers, and official Telegram VIP titles.</p>
+        <div class="game-card-footer">
+          <div class="game-limits">Protect your points or flex your status</div>
+          <button class="game-play-btn green">OPEN SHOP 🛡️</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 1: ROULETTE -->
+  <div class="tab-pane" id="pane-roulette">
+    <div class="back-hub-bar">
+      <button class="back-btn" data-target="lobby">◀ Back to Game Hub</button>
+      <span class="back-title">Russian Roulette</span>
+    </div>
+    <div class="poster" id="arenaCard">
+      <div class="title">Dead or alive?</div>
+      <div class="round" id="roundBadge">Round 1 of 5</div>
+      <div class="reward"><small>Reward Pot</small><div class="pot" id="potValue">50<i>pts</i></div></div>
+      <div class="cyl">
+        <div class="notch"></div>
+        <svg id="revolverSvg" viewBox="0 0 200 200" aria-label="Revolver cylinder">
+          <defs>
+            <radialGradient id="steel" cx="35%" cy="30%" r="85%"><stop offset="0" stop-color="#6f6a62"/><stop offset=".55" stop-color="#34322f"/><stop offset="1" stop-color="#171615"/></radialGradient>
+            <radialGradient id="brs" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#f0d38a"/><stop offset="1" stop-color="#7d5a1c"/></radialGradient>
+          </defs>
+          <circle cx="100" cy="100" r="94" fill="url(#steel)" stroke="#0e0c0a" stroke-width="3"/>
+          <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,255,255,.14)"/>
+          <g id="flutes" fill="#0f0e0d"></g>
+          <circle cx="100" cy="100" r="25" fill="url(#brs)" stroke="#0e0c0a" stroke-width="2"/>
+          <circle cx="100" cy="100" r="7" fill="#1a1205"/>
+          <circle id="slot1" class="chamber" cx="100" cy="42" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+          <circle id="slot2" class="chamber" cx="150" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+          <circle id="slot3" class="chamber" cx="150" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+          <circle id="slot4" class="chamber" cx="100" cy="158" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+          <circle id="slot5" class="chamber" cx="50" cy="129" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+          <circle id="slot6" class="chamber" cx="50" cy="71" r="19" fill="#0c0b0a" stroke="#6b665c" stroke-width="3"/>
+        </svg>
+      </div>
+      <div class="ladder" id="ladder"></div>
+      <div class="status" id="statusBanner">Spin the cylinder, then pull the trigger.</div>
+    </div>
+    <div style="display:grid;gap:8px">
+      <button class="btn fire" id="btnFire"><span id="btnFireText">Pull trigger</span><small id="btnFireSub">+50 pts</small></button>
+      <button class="btn cash" id="btnCashout" style="display:none"><span>Cash out</span><small id="btnCashoutText">+0 pts</small></button>
+      <div class="note" id="subNotice">If the live round fires, you lose 150 pts from your shared wallet.</div>
+    </div>
+  </div>
+
+  <!-- TAB 2: SLOTS -->
+  <div class="tab-pane" id="pane-slots">
+    <div class="back-hub-bar">
+      <button class="back-btn" data-target="lobby">◀ Back to Game Hub</button>
+      <span class="back-title">Casino Slots</span>
+    </div>
+    <div class="slot-cabinet">
+      <div class="slot-header">
+        <h2>⚡ HIGH ROLLER SLOTS ⚡</h2>
+        <p>Provably Fair • Instant Shared Wallet Payouts</p>
+      </div>
+      <div class="reels-stage" id="slotStage">
+        <div class="win-line-guide"></div>
+        <div class="reel-box" id="reelBox1"><div class="reel-strip" id="strip1"><div class="symbol">7️⃣</div></div></div>
+        <div class="reel-box" id="reelBox2"><div class="reel-strip" id="strip2"><div class="symbol">⭐</div></div></div>
+        <div class="reel-box" id="reelBox3"><div class="reel-strip" id="strip3"><div class="symbol">7️⃣</div></div></div>
+      </div>
+      <div class="slot-banner">
+        <span>Payout: <b id="slotWinDisplay">0 pts</b></span>
+        <span>Multiplier: <b id="slotMultDisplay">0.0x</b></span>
+      </div>
+      <div class="chips-row" id="slotsChips">
+        <div class="chip active" data-bet="50">50</div>
+        <div class="chip" data-bet="100">100</div>
+        <div class="chip" data-bet="250">250</div>
+        <div class="chip" data-bet="500">500</div>
+      </div>
+      <button class="btn fire" id="btnSlotSpin" style="grid-template-columns:1fr"><span style="text-align:center">🎰 PULL LEVER / SPIN</span></button>
+      <div class="paytable-card">
+        <span>7️⃣7️⃣7️⃣ = 50x</span>
+        <span>⭐⭐⭐ = 30x</span>
+        <span>💎💎💎 = 20x</span>
+        <span>🔔🔔🔔 = 10x</span>
+        <span>🍇🍇🍇 = 6x</span>
+        <span>Pair = Up to 3x</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 3: AVIATOR -->
+  <div class="tab-pane" id="pane-aviator">
+    <div class="back-hub-bar">
+      <button class="back-btn" data-target="lobby">◀ Back to Game Hub</button>
+      <span class="back-title">Aviator Rocket</span>
+    </div>
+    <div class="aviator-arena">
+      <div class="history-bar" id="aviatorHistory">
+        <div class="hist-pill">1.45x</div>
+        <div class="hist-pill big">6.82x</div>
+        <div class="hist-pill">2.10x</div>
+        <div class="hist-pill">1.12x</div>
+        <div class="hist-pill big">14.50x</div>
+      </div>
+      <div class="radar-screen">
+        <canvas id="radarCanvas"></canvas>
+        <div class="multiplier-hud">
+          <div class="mult-val" id="aviatorMult">1.00x</div>
+          <div class="mult-label" id="aviatorSub">WAITING FOR FLIGHT</div>
+        </div>
+      </div>
+      <div class="aviator-status" id="aviatorMsg">Select your bet and initiate takeoff!</div>
+      <div class="chips-row" id="aviatorChips">
+        <div class="chip active" data-bet="50">50</div>
+        <div class="chip" data-bet="100">100</div>
+        <div class="chip" data-bet="250">250</div>
+        <div class="chip" data-bet="500">500</div>
+      </div>
+      <button class="btn action-green" id="btnAviatorAction">
+        <span id="btnAviatorText">TAKE OFF 🚀</span>
+        <small id="btnAviatorSub">Bet 50 pts</small>
+      </button>
+    </div>
+  </div>
+
+  <!-- TAB 4: SHOP -->
+  <div class="tab-pane" id="pane-shop">
+    <div class="back-hub-bar">
+      <button class="back-btn" data-target="lobby">◀ Back to Game Hub</button>
+      <span class="back-title">The Armory</span>
+    </div>
+    <div class="shop-catalog" id="shopCatalog">
+      <!-- Generated dynamically -->
+    </div>
   </div>
 </div>
 
+<!-- Result Modal -->
 <div class="sheet" id="outcomeModal">
   <div class="card">
-    <h2 id="modalTitle">Khel khatam</h2>
+    <h2 id="modalTitle">Outcome</h2>
     <p id="modalDesc"></p>
-    <div class="delta" id="modalPtsDelta">-150</div>
-    <button class="btn fire" id="modalBtn"><span>Ride again</span></button>
+    <div class="delta" id="modalPtsDelta">+0</div>
+    <button class="btn fire" id="modalBtn"><span>Continue</span></button>
   </div>
 </div>
 
 <script>
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#24150c'); tg.setBackgroundColor('#24150c'); } catch(e){} }
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#1f130a'); tg.setBackgroundColor('#1f130a'); } catch(e){} }
 
-/* audio: synthesized firearm sounds (no files needed) */
-const AC = window.AudioContext || window.webkitAudioContext; let actx=null, master=null, verb=null;
+/* --- AUDIO ENGINE (Web Audio API Synthesizer) --- */
+let soundMuted = localStorage.getItem('flash_mute') === 'true';
+const AC = window.AudioContext || window.webkitAudioContext;
+let actx=null, master=null, verb=null;
 function ctx(){
   if(!actx){
     actx=new AC();
-    master=actx.createDynamicsCompressor();
-    master.threshold.value=-14; master.ratio.value=8; master.attack.value=.002; master.release.value=.2;
-    master.connect(actx.destination);
-    const len=Math.floor(actx.sampleRate*1.6), ir=actx.createBuffer(2,len,actx.sampleRate);
+    master=actx.createGain(); master.gain.value = soundMuted ? 0 : 0.85; master.connect(actx.destination);
+    const len=Math.floor(actx.sampleRate*1.2), ir=actx.createBuffer(2,len,actx.sampleRate);
     for(let ch=0;ch<2;ch++){ const d=ir.getChannelData(ch); for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2); }
     verb=actx.createConvolver(); verb.buffer=ir;
-    const vg=actx.createGain(); vg.gain.value=.55; verb.connect(vg); vg.connect(master);
+    const vg=actx.createGain(); vg.gain.value=.4; verb.connect(vg); vg.connect(master);
   }
   if(actx.state==='suspended') actx.resume();
   return actx;
@@ -182,20 +533,23 @@ function noise(c,dur,decay){
   const s=c.createBufferSource(); s.buffer=b; return s;
 }
 function burst(t,o){
-  const {dur=.05,decay=.01,type='bandpass',freq=3000,q=1,vol=1,f2=null,wet=0}=o;
+  if(soundMuted) return;
+  const {dur=.05,decay=.01,type='bandpass',freq=3000,q=1,vol=1,wet=0}=o;
   const c=ctx(), s=noise(c,dur,decay), f=c.createBiquadFilter(), g=c.createGain();
-  f.type=type; f.frequency.setValueAtTime(freq,t); if(f2) f.frequency.exponentialRampToValueAtTime(f2,t+dur); f.Q.value=q;
+  f.type=type; f.frequency.setValueAtTime(freq,t); f.Q.value=q;
   g.gain.value=vol; s.connect(f); f.connect(g); g.connect(master);
   if(wet){ const w=c.createGain(); w.gain.value=wet; g.connect(w); w.connect(verb); }
   s.start(t);
 }
 function ping(t,freq,vol,dur,type='sine'){
+  if(soundMuted) return;
   const c=ctx(), o=c.createOscillator(), g=c.createGain();
   o.type=type; o.frequency.setValueAtTime(freq,t);
   g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
   o.connect(g); g.connect(master); o.start(t); o.stop(t+dur);
 }
 function thump(t,f0,f1,vol,dur){
+  if(soundMuted) return;
   const c=ctx(), o=c.createOscillator(), g=c.createGain();
   o.type='sine'; o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(f1,t+dur);
   g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
@@ -204,337 +558,647 @@ function thump(t,f0,f1,vol,dur){
 function metalClick(t,vol=1,pitch=1){
   burst(t,{dur:.025,decay:.004,freq:3600*pitch,q:6,vol:.9*vol});
   ping(t,2300*pitch,.12*vol,.05,'square');
-  ping(t,1450*pitch,.1*vol,.07,'triangle');
 }
-/* cylinder spin: whirr plus a ratchet that slows down */
 function playSpin(){
   const c=ctx(); let t=c.currentTime+.02, gap=.035;
-  burst(c.currentTime,{dur:.9,decay:.5,type:'lowpass',freq:500,vol:.12});
-  for(let i=0;i<12;i++){ metalClick(t,.55+Math.random()*.2,.9+Math.random()*.2); t+=gap; gap*=1.15; }
+  for(let i=0;i<10;i++){ metalClick(t,.5,.9); t+=gap; gap*=1.15; }
 }
-/* hammer cocking: light catch, then the heavy full-cock click */
-function playHammer(){
-  const t=ctx().currentTime;
-  metalClick(t,.8,.8); metalClick(t+.13,1,.7); thump(t+.13,180,90,.35,.06);
-}
-/* empty chamber: hammer falls on nothing */
-function playClick(){
-  const t=ctx().currentTime;
-  metalClick(t,1.2,1); thump(t,220,110,.3,.05);
-  burst(t,{dur:.2,decay:.05,freq:1800,q:2,vol:.15,wet:.4});
-}
-/* live round: sharp crack, blast body, low thump, room tail, shell drop */
+function playHammer(){ const t=ctx().currentTime; metalClick(t,.8,.8); thump(t+.1,180,90,.35,.06); }
+function playClick(){ const t=ctx().currentTime; metalClick(t,1.2,1); thump(t,220,110,.3,.05); }
 function playBoom(){
   const t=ctx().currentTime;
   burst(t,{dur:.06,decay:.012,type:'highpass',freq:1500,vol:1.6,wet:.9});
-  burst(t,{dur:.5,decay:.12,type:'lowpass',freq:2200,f2:150,vol:1.3,wet:.7});
   thump(t,160,35,1.4,.35);
-  burst(t+.08,{dur:.9,decay:.35,type:'lowpass',freq:700,f2:100,vol:.25,wet:1});
-  ping(t+.45,4200,.08,.12,'triangle'); ping(t+.52,3300,.05,.1,'triangle');
 }
-/* cash out: handful of coins */
 function playCash(){
   const c=ctx(); let t=c.currentTime;
-  for(let i=0;i<9;i++){
-    const f=[2637,3136,3951,4699][i%4]*(1+Math.random()*.03);
-    ping(t,f,.12,.28,'triangle'); ping(t,f*1.5,.05,.18);
-    burst(t,{dur:.02,decay:.005,freq:6000,q:3,vol:.25});
-    t+=.05+Math.random()*.05;
-  }
+  for(let i=0;i<7;i++){ ping(t,2600*(1+i*.1),.15,.2,'triangle'); t+=.05; }
+}
+function playSlotClunk(){ const t=ctx().currentTime; thump(t,140,60,.7,.08); metalClick(t,1,1.2); }
+function playFanfare(){
+  const c=ctx(), t=c.currentTime;
+  [523.25, 659.25, 783.99, 1046.50].forEach((f, idx)=>{ ping(t+idx*.08,f,.2,.35,'triangle'); });
 }
 
-/* state */
+// Aviator Engine
+let engineOsc=null, engineGain=null;
+function startJetEngine(){
+  if(soundMuted) return;
+  try{
+    const c=ctx();
+    engineOsc=c.createOscillator(); engineGain=c.createGain();
+    engineOsc.type='sawtooth'; engineOsc.frequency.setValueAtTime(75,c.currentTime);
+    const filter=c.createBiquadFilter(); filter.type='lowpass'; filter.frequency.value=400;
+    engineGain.gain.setValueAtTime(.08,c.currentTime);
+    engineOsc.connect(filter); filter.connect(engineGain); engineGain.connect(master);
+    engineOsc.start();
+  }catch(e){}
+}
+function rampJetPitch(mult){
+  if(!engineOsc || soundMuted) return;
+  try{
+    const targetFreq = Math.min(600, 75 + mult * 45);
+    engineOsc.frequency.setTargetAtTime(targetFreq, ctx().currentTime, .1);
+  }catch(e){}
+}
+function stopJetEngine(){
+  if(engineGain){ try{ engineGain.gain.setTargetAtTime(.0001, ctx().currentTime, .08); setTimeout(()=>{ try{engineOsc?.stop(); engineOsc=null;}catch(e){} }, 100); }catch(e){} }
+}
+
+const haptic=(k,t)=>{ try{ tg?.HapticFeedback?.[k](t); }catch(e){} };
+
+/* --- USER & APP STATE --- */
 const qs = new URLSearchParams(location.search);
 const token = qs.get('token') || '';
 const user = {
   id: parseInt(qs.get('user_id')) || 0,
   name: qs.get('user_name') || tg?.initDataUnsafe?.user?.first_name || 'Player'
 };
+let userPoints = 200, userShield = 0, userTitle = 'Greenhorn';
 
 async function api(path, body){
   const isPost = body !== undefined;
   const url = isPost ? path : `${path}?user_id=${user.id}&token=${encodeURIComponent(token)}`;
   const opt = isPost ? {method:'POST',headers:{'Content-Type':'application/json'},
-                        body:JSON.stringify({user_id:user.id,token,user_name:user.name})} : {};
+                        body:JSON.stringify({user_id:user.id,token,user_name:user.name,...body})} : {};
   const r = await fetch(url,opt);
   const d = await r.json().catch(()=>({}));
   if(!r.ok) throw Object.assign(new Error(d.error||('http '+r.status)),{status:r.status,data:d});
   return d;
 }
 
-let round=1, currentPot=0, isSpinning=false, userPoints=200, rotationDeg=0;
-const roundPots={1:50,2:120,3:220,4:380,5:600};
 const $=id=>document.getElementById(id);
-const el={avatar:$('playerAvatar'),name:$('playerName'),rank:$('playerRank'),bal:$('playerBalance'),badge:$('roundBadge'),pot:$('potValue'),
-  status:$('statusBanner'),fire:$('btnFire'),fireText:$('btnFireText'),fireSub:$('btnFireSub'),cash:$('btnCashout'),cashText:$('btnCashoutText'),
-  rev:$('revolverSvg'),arena:$('arenaCard'),modal:$('outcomeModal'),mTitle:$('modalTitle'),mDesc:$('modalDesc'),mDelta:$('modalPtsDelta'),
-  mBtn:$('modalBtn'),notice:$('subNotice'),ladder:$('ladder')};
+const el={
+  avatar:$('playerAvatar'),name:$('playerName'),rank:$('playerRank'),bal:$('playerBalance'),
+  shieldTag:$('shieldTag'),audioBtn:$('btnAudioToggle'),
+  modal:$('outcomeModal'),mTitle:$('modalTitle'),mDesc:$('modalDesc'),mDelta:$('modalPtsDelta'),mBtn:$('modalBtn')
+};
+
 el.name.textContent=user.name; el.avatar.textContent=(user.name||'?').charAt(0).toUpperCase();
 
-$('flutes').innerHTML=[0,1,2,3,4,5].map(i=>{const a=(i*60+30)*Math.PI/180;
-  return `<circle cx="${100+Math.sin(a)*72}" cy="${100-Math.cos(a)*72}" r="5"/>`}).join('');
-el.ladder.innerHTML=Object.keys(roundPots).map(r=>`<div class="rung" data-r="${r}"><span>R${r}</span><b>${roundPots[r]}</b></div>`).join('');
+function updateSharedPoints(pts){
+  userPoints = Number(pts);
+  el.bal.textContent = userPoints;
+  el.bal.classList.remove('glow'); void el.bal.offsetWidth; el.bal.classList.add('glow');
+  setTimeout(()=>el.bal.classList.remove('glow'), 400);
+}
 
-function setStatus(html,cls=''){ el.status.className='status '+cls; el.status.innerHTML=html; }
-function setBalance(v){ userPoints=Number(v); el.bal.textContent=userPoints; }
-
-function resetSlots(){ for(let i=1;i<=6;i++){ const s=$('slot'+i); if(s){ s.setAttribute('fill','#0c0b0a'); s.setAttribute('stroke','#6b665c'); } } }
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
-const haptic=(k,t)=>{ try{ tg?.HapticFeedback?.[k](t); }catch(e){} };
 function showModal(title,desc,delta,color){
   el.mTitle.textContent=title; el.mDesc.textContent=desc; el.mDelta.textContent=delta; el.mDelta.style.color=color; el.modal.classList.add('show');
 }
+el.mBtn.addEventListener('click', ()=>el.modal.classList.remove('show'));
 
-function updateUI(){
-  const dispRound = Math.min(Math.max(round, 1), 5);
-  el.badge.textContent = `Round ${dispRound} of 5`;
-  el.pot.innerHTML = `${Number(currentPot || roundPots[dispRound] || 50)}<i>pts</i>`;
-  el.pot.classList.remove('bump'); void el.pot.offsetWidth; el.pot.classList.add('bump');
-  el.fireText.textContent = currentPot === 0 ? 'Pull trigger' : 'Risk it';
-  el.fireSub.textContent = `+${Number(roundPots[dispRound] || 50)} pts`;
-  el.ladder.querySelectorAll('.rung').forEach(r => {
-    const n = Number(r.dataset.r);
-    r.className = 'rung' + (n < round ? ' done' : '') + (n === round ? ' now' : '');
-  });
-  if (currentPot > 0) {
-    el.cash.style.display = 'grid';
-    el.cashText.textContent = `+${Number(currentPot)} pts`;
-  } else {
-    el.cash.style.display = 'none';
-  }
+el.audioBtn.addEventListener('click', ()=>{
+  soundMuted = !soundMuted;
+  localStorage.setItem('flash_mute', soundMuted);
+  el.audioBtn.textContent = soundMuted ? '🔇' : '🔊';
+  if(master) master.gain.value = soundMuted ? 0 : 0.85;
+});
+if(soundMuted) el.audioBtn.textContent = '🔇';
+
+/* --- TABS SYSTEM --- */
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabPanes = document.querySelectorAll('.tab-pane');
+
+function switchTab(tabId){
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+  tabPanes.forEach(p => p.classList.toggle('active', p.id === `pane-${tabId}`));
+  haptic('impactOccurred', 'light');
+  if(tabId === 'aviator') resizeCanvas();
+  window.scrollTo({top:0, behavior:'smooth'});
 }
-updateUI();
+tabButtons.forEach(btn => btn.addEventListener('click', ()=>switchTab(btn.dataset.tab)));
 
-async function loadPlayerData(){
-  if (!user.id || !token) {
-    setStatus('Open this game from the bot.', 'bad');
-    el.fire.classList.add('off');
-    return;
-  }
+// Connect back buttons and game-card click triggers
+document.querySelectorAll('.game-card, .btn-back-lobby, .back-btn').forEach(el => {
+  el.addEventListener('click', (e)=>{
+    const target = el.dataset.target;
+    if(target) switchTab(target);
+  });
+});
+
+// Default tab: lobby (the 3 games option screen)
+const initTab = qs.get('tab') || 'lobby';
+if(['lobby','roulette','slots','aviator','shop'].includes(initTab)) switchTab(initTab);
+
+/* --- LOAD INITIAL USER DATA --- */
+async function loadUserData(){
+  if(!user.id || !token) return;
   try{
     const d = await api('/api/player');
-    setBalance(d.points);
-    el.rank.textContent = `Rank #${Number(d.rank) || 1}  |  Streak ${Number(d.streak) || 0}`;
+    updateSharedPoints(d.points);
+    userTitle = d.title || 'Greenhorn';
+    userShield = Number(d.shield) || 0;
+    el.rank.textContent = `${userTitle} • #${d.rank || 1}`;
+    el.shieldTag.classList.toggle('active', userShield > 0);
 
-    if (d.run) {
-      round = Number(d.run.round) + 1;
-      currentPot = Number(d.run.pot);
-      for (let i = 1; i <= Number(d.run.round); i++) {
-        const s = $('slot' + i);
-        if (s) {
-          s.setAttribute('fill', '#c08a2e');
-          s.setAttribute('stroke', '#f0d38a');
-        }
+    // Roulette resume
+    if(d.run){
+      r_round = Number(d.run.round) + 1;
+      r_currentPot = Number(d.run.pot);
+      for(let i=1;i<=Number(d.run.round);i++){
+        const s=$('slot'+i); if(s){ s.setAttribute('fill','#c08a2e'); s.setAttribute('stroke','#f0d38a'); }
       }
-      rotationDeg = -(Number(d.run.round) - 1) * 60 - 720;
-      el.rev.style.transition = 'none';
-      el.rev.style.transform = `rotate(${rotationDeg}deg)`;
-      void el.rev.offsetWidth;
-      el.rev.style.transition = '';
-      updateUI();
-      setStatus('Game resumed. Risk it or cash out.');
+      r_rotation = -(Number(d.run.round)-1)*60 - 720;
+      r_rev.style.transition='none'; r_rev.style.transform=`rotate(${r_rotation}deg)`;
+      void r_rev.offsetWidth; r_rev.style.transition='';
+      r_updateUI();
+      r_setStatus('Resumed run. Pull trigger or cash out.');
     } else {
-      round = 1;
-      currentPot = 0;
-      resetSlots();
-      updateUI();
-      if (Number(d.points) < 150) {
-        const dailyIn = Number(d.daily_in) || 0;
-        const h = Math.floor(dailyIn / 3600);
-        const m = Math.floor((dailyIn % 3600) / 60);
-        const timeStr = `${h}h ${m}m`;
-        el.notice.classList.add('warn');
-        el.notice.textContent = dailyIn > 0
-          ? `You need at least 150 pts to play. /daily available in ${timeStr}.`
-          : 'You need at least 150 pts to play. Claim yours with /daily now!';
-      } else {
-        el.notice.classList.remove('warn');
-        el.notice.textContent = 'If the live round fires, you lose 150 pts from your wallet.';
-      }
+      r_updateUI();
     }
+
+    renderShop(d.shop_items || [], d.inventory || []);
   }catch(e){
     console.error('Player load error:', e);
-    setStatus('Could not load player data.', 'bad');
   }
 }
 
-if (!user.id || !token) {
-  setStatus('Open this game from the bot.', 'bad');
-  el.fire.classList.add('off');
-} else {
-  loadPlayerData();
+/* ==========================================================
+   GAME 1: RUSSIAN ROULETTE
+   ========================================================== */
+let r_round=1, r_currentPot=0, r_isSpinning=false, r_rotation=0;
+const r_pots={1:50,2:120,3:220,4:380,5:600};
+const r_rev=$('revolverSvg'), r_arena=$('arenaCard'), r_status=$('statusBanner'),
+      r_fire=$('btnFire'), r_fireText=$('btnFireText'), r_fireSub=$('btnFireSub'),
+      r_cash=$('btnCashout'), r_cashText=$('btnCashoutText'), r_ladder=$('ladder'),
+      r_badge=$('roundBadge'), r_pot=$('potValue');
+
+$('flutes').innerHTML=[0,1,2,3,4,5].map(i=>{const a=(i*60+30)*Math.PI/180;
+  return `<circle cx="${100+Math.sin(a)*72}" cy="${100-Math.cos(a)*72}" r="5"/>`}).join('');
+r_ladder.innerHTML=Object.keys(r_pots).map(r=>`<div class="rung" data-r="${r}"><span>R${r}</span><b>${r_pots[r]}</b></div>`).join('');
+
+function r_setStatus(html,cls=''){ r_status.className='status '+cls; r_status.innerHTML=html; }
+function r_resetSlots(){ for(let i=1;i<=6;i++){ const s=$('slot'+i); if(s){ s.setAttribute('fill','#0c0b0a'); s.setAttribute('stroke','#6b665c'); } } }
+
+function r_updateUI(){
+  const disp = Math.min(Math.max(r_round, 1), 5);
+  r_badge.textContent = `Round ${disp} of 5`;
+  r_pot.innerHTML = `${Number(r_currentPot || r_pots[disp] || 50)}<i>pts</i>`;
+  r_pot.classList.remove('bump'); void r_pot.offsetWidth; r_pot.classList.add('bump');
+  r_fireText.textContent = r_currentPot === 0 ? 'Pull trigger' : 'Risk it';
+  r_fireSub.textContent = `+${Number(r_pots[disp] || 50)} pts`;
+  r_ladder.querySelectorAll('.rung').forEach(r => {
+    const n = Number(r.dataset.r);
+    r.className = 'rung' + (n < r_round ? ' done' : '') + (n === r_round ? ' now' : '');
+  });
+  r_cash.style.display = r_currentPot > 0 ? 'grid' : 'none';
+  if(r_currentPot > 0) r_cashText.textContent = `+${Number(r_currentPot)} pts`;
 }
 
-el.fire.addEventListener('click', async () => {
-  if (isSpinning || !user.id || !token) return;
-
-  if (userPoints < 150 && currentPot === 0) {
-    el.notice.classList.add('warn');
-    el.notice.textContent = 'You need at least 150 pts to play. Claim yours with /daily first.';
+r_fire.addEventListener('click', async ()=>{
+  if(r_isSpinning || !user.id || !token) return;
+  if(userPoints < 150 && r_currentPot === 0){
+    showModal('Broke Kid!', 'Aapke paas kam se kam 150 points hone chahiye. /daily se claim karo!', '0 pts', '#9c2f1e');
     return;
   }
-
-  isSpinning = true;
-  el.fire.classList.add('off');
-  el.cash.classList.add('off');
-
-  // B6: parallel request
+  r_isSpinning = true; r_fire.classList.add('off'); r_cash.classList.add('off');
   const req = api('/api/spin', {}).catch(e => ({ __err: e }));
 
-  if (currentPot === 0) {
-    setStatus('<b>Spinning the cylinder...</b>');
-    playSpin();
-    haptic('impactOccurred', 'medium');
-    rotationDeg = Math.floor(rotationDeg / 360) * 360 - 720;
-    el.rev.style.transform = `rotate(${rotationDeg}deg)`;
-    await wait(900);
-    setStatus('<b>Hammer back.</b> Steady now...');
-    playHammer();
-    haptic('impactOccurred', 'heavy');
-    await wait(900);
+  if(r_currentPot === 0){
+    r_setStatus('<b>Spinning cylinder...</b>'); playSpin(); haptic('impactOccurred','medium');
+    r_rotation = Math.floor(r_rotation/360)*360 - 720; r_rev.style.transform = `rotate(${r_rotation}deg)`;
+    await new Promise(r=>setTimeout(r,850));
+    r_setStatus('<b>Hammer cocked.</b>'); playHammer(); haptic('impactOccurred','heavy');
+    await new Promise(r=>setTimeout(r,850));
   } else {
-    setStatus('<b>Cocking the hammer...</b>');
-    rotationDeg -= 60;
-    el.rev.style.transform = `rotate(${rotationDeg}deg)`;
-    playHammer();
-    haptic('impactOccurred', 'heavy');
-    await wait(900);
+    r_setStatus('<b>Cocking hammer...</b>'); r_rotation -= 60; r_rev.style.transform = `rotate(${r_rotation}deg)`;
+    playHammer(); haptic('impactOccurred','heavy');
+    await new Promise(r=>setTimeout(r,850));
   }
 
   const data = await req;
-  if (data.__err) {
-    console.error('Spin error:', data.__err);
-    setStatus('Something went wrong, try again.', 'bad');
-    el.fire.classList.remove('off');
-    if (currentPot > 0) el.cash.classList.remove('off');
-    isSpinning = false;
+  if(data.__err){
+    r_setStatus('Network error, please retry.', 'bad');
+    r_fire.classList.remove('off'); if(r_currentPot>0) r_cash.classList.remove('off');
+    r_isSpinning = false; return;
+  }
+
+  if(data.status === 'shield_saved'){
+    playBoom(); haptic('notificationOccurred','warning');
+    el.shieldTag.classList.remove('active');
+    r_setStatus('<b>BLAM!</b> Shield absorbed the bullet!', 'good');
+    updateSharedPoints(data.new_points);
+    showModal('🛡️ Shield Saved You!', 'Aapke Kevlar Vest ne bullet absorb kar li! Points bach gaye par shield break ho gaya.', '0 pts', '#4f6b3a');
+    r_round=1; r_currentPot=0; r_resetSlots(); r_updateUI();
+    r_fire.classList.remove('off'); r_isSpinning=false;
     return;
   }
 
-  switch (data.status) {
-    case 'dead': {
-      playBoom();
-      haptic('notificationOccurred', 'error');
-      el.arena.classList.add('shake');
-      setTimeout(() => el.arena.classList.remove('shake'), 600);
-      const ch = Number(data.chamber);
-      const hit = $('slot' + ch);
-      if (hit) {
-        hit.setAttribute('fill', '#b63a26');
-        hit.setAttribute('stroke', '#f0b4a6');
-      }
-      setStatus(`<b>Bang.</b> Chamber ${ch} was loaded.`, 'bad');
-      setBalance(data.new_points);
-      setTimeout(() => {
-        showModal('Khel khatam', data.roast || 'Goli lag gayi! Round ke points gaye aur wallet se 150 pts kat gaye.', '-150', '#9c2f1e');
-      }, 1000);
-      break;
-    }
-    case 'jackpot': {
-      playCash();
-      haptic('notificationOccurred', 'success');
-      const ok = $('slot5');
-      if (ok) {
-        ok.setAttribute('fill', '#c08a2e');
-        ok.setAttribute('stroke', '#f0d38a');
-      }
-      setStatus('<b>Click.</b> Chamber 5 was empty. ALL ROUNDS CLEARED!', 'good');
-      setBalance(data.new_points);
-      showModal('Legend of the West', 'Lagatar 5 rounds survive kar liye. Jackpot tumhara!', '+' + Number(data.jackpot), '#4f6b3a');
-      break;
-    }
-    case 'survived': {
-      playClick();
-      haptic('notificationOccurred', 'success');
-      const ch = Number(data.chamber);
-      const ok = $('slot' + ch);
-      if (ok) {
-        ok.setAttribute('fill', '#c08a2e');
-        ok.setAttribute('stroke', '#f0d38a');
-      }
-      currentPot = Number(data.current_pot);
-      round = Number(data.next_round);
-      setStatus(`<b>Click.</b> Chamber ${ch} was empty. Round ${round - 1} cleared.`, 'good');
-      updateUI();
-      el.fire.classList.remove('off');
-      el.cash.classList.remove('off');
-      isSpinning = false;
-      break;
-    }
-    case 'broke': {
-      const dailyIn = Number(data.daily_in) || 0;
-      const h = Math.floor(dailyIn / 3600);
-      const m = Math.floor((dailyIn % 3600) / 60);
-      const cd = dailyIn > 0 ? `\n\n⏳ /daily available in ${h}h ${m}m.` : '\n\n🎁 /daily is available now!';
-      showModal('Khelna band', (data.roast || 'Points khatam ho gaye!') + cd, '0', '#9c2f1e');
-      setStatus('You need at least 150 points to play.', 'bad');
-      el.fire.classList.remove('off');
-      el.cash.classList.remove('off');
-      isSpinning = false;
-      break;
-    }
-    default: {
-      setStatus('Something went wrong, try again.', 'bad');
-      el.fire.classList.remove('off');
-      if (currentPot > 0) el.cash.classList.remove('off');
-      isSpinning = false;
-      break;
-    }
+  if(data.status === 'dead'){
+    playBoom(); haptic('notificationOccurred','error');
+    r_arena.classList.add('shake'); setTimeout(()=>r_arena.classList.remove('shake'), 600);
+    const hit = $('slot' + Number(data.chamber));
+    if(hit){ hit.setAttribute('fill','#b63a26'); hit.setAttribute('stroke','#f0b4a6'); }
+    r_setStatus(`<b>Bang!</b> Chamber ${data.chamber} had the bullet!`, 'bad');
+    updateSharedPoints(data.new_points);
+    setTimeout(()=>{
+      showModal('Khel Khatam!', data.roast || 'Goli lag gayi aur 150 points kat gaye!', '-150 pts', '#9c2f1e');
+      r_round=1; r_currentPot=0; r_resetSlots(); r_updateUI();
+      r_fire.classList.remove('off'); r_isSpinning=false;
+    }, 900);
+    return;
+  }
+
+  if(data.status === 'jackpot'){
+    playCash(); playFanfare(); haptic('notificationOccurred','success');
+    r_setStatus('<b>CLICK!</b> Chamber 5 empty. ALL ROUNDS CLEARED!', 'good');
+    updateSharedPoints(data.new_points);
+    showModal('Western Legend!', 'Lagatar 5 rounds survive kar liye! Pura Jackpot tumhara!', `+${data.jackpot} pts`, '#4f6b3a');
+    r_round=1; r_currentPot=0; r_resetSlots(); r_updateUI();
+    r_fire.classList.remove('off'); r_isSpinning=false;
+    return;
+  }
+
+  if(data.status === 'survived'){
+    playClick(); haptic('notificationOccurred','success');
+    const ok = $('slot' + Number(data.chamber));
+    if(ok){ ok.setAttribute('fill','#c08a2e'); ok.setAttribute('stroke','#f0d38a'); }
+    r_currentPot = Number(data.current_pot); r_round = Number(data.next_round);
+    r_setStatus(`<b>Click.</b> Chamber ${data.chamber} was empty. Round ${r_round-1} cleared.`, 'good');
+    r_updateUI();
+    r_fire.classList.remove('off'); r_cash.classList.remove('off'); r_isSpinning = false;
+    return;
+  }
+
+  if(data.status === 'broke'){
+    showModal('Gareeb!', data.roast || 'Points khatam ho gaye!', '0 pts', '#9c2f1e');
+    r_setStatus('Kam se kam 150 points chahiye.', 'bad');
+    r_fire.classList.remove('off'); r_isSpinning=false;
+    return;
   }
 });
 
-el.cash.addEventListener('click', async () => {
-  if (isSpinning || currentPot === 0 || !user.id || !token) return;
-  isSpinning = true;
-  el.fire.classList.add('off');
-  el.cash.classList.add('off');
-  try {
-    const data = await api('/api/cashout', {});
-    if (data.status === 'cashed_out') {
-      playCash();
-      haptic('notificationOccurred', 'success');
-      const credited = Number(data.credited);
-      const newPoints = Number(data.new_points);
-      const streak = Number(data.streak);
-      setBalance(newPoints);
-      showModal(
-        'Cashed out',
-        `Samajhdari dikhai aur +${credited} pts leke nikal gaye. Streak: ${streak}`,
-        `+${credited}`,
-        '#4f6b3a'
-      );
-    } else {
-      setStatus('Cash out failed. Try again.', 'bad');
-      el.fire.classList.remove('off');
-      el.cash.classList.remove('off');
-      isSpinning = false;
+r_cash.addEventListener('click', async ()=>{
+  if(r_isSpinning || r_currentPot === 0 || !user.id || !token) return;
+  r_isSpinning = true; r_fire.classList.add('off'); r_cash.classList.add('off');
+  try{
+    const d = await api('/api/cashout', {});
+    if(d.status === 'cashed_out'){
+      playCash(); haptic('notificationOccurred','success');
+      updateSharedPoints(d.new_points);
+      showModal('Cashed Out!', `Samajhdari dikhai aur +${d.credited} pts pot leke nikal gaye!`, `+${d.credited} pts`, '#4f6b3a');
+      r_round=1; r_currentPot=0; r_resetSlots(); r_updateUI();
     }
-  } catch (e) {
-    console.error('Cashout error:', e);
-    setStatus('Cash out failed. Try again.', 'bad');
-    el.fire.classList.remove('off');
-    el.cash.classList.remove('off');
-    isSpinning = false;
+  }catch(e){
+    r_setStatus('Cashout failed. Try again.', 'bad');
   }
+  r_fire.classList.remove('off'); r_isSpinning=false;
 });
 
-el.mBtn.addEventListener('click', () => {
-  el.modal.classList.remove('show');
-  round = 1;
-  currentPot = 0;
-  isSpinning = false;
-  resetSlots();
-  rotationDeg = Math.floor(rotationDeg / 360) * 360;
-  el.rev.style.transition = 'none';
-  el.rev.style.transform = `rotate(${rotationDeg}deg)`;
-  void el.rev.offsetWidth;
-  el.rev.style.transition = '';
-  updateUI();
-  el.fire.classList.remove('off');
-  el.cash.classList.remove('off');
-  setStatus('New game. Spin the cylinder, then pull the trigger.');
-  loadPlayerData();
+/* ==========================================================
+   GAME 2: CASINO SLOTS (Unpredictable RNG)
+   ========================================================== */
+let slotBet = 50, slotSpinning = false;
+const slotsChips = document.querySelectorAll('#slotsChips .chip');
+slotsChips.forEach(c => c.addEventListener('click', ()=>{
+  slotsChips.forEach(x => x.classList.remove('active'));
+  c.classList.add('active'); slotBet = Number(c.dataset.bet);
+  haptic('impactOccurred','light');
+}));
+
+const SYMBOLS_POOL = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣", "⭐"];
+function buildReelStrip(stripEl, finalSymbol){
+  let items = [];
+  for(let i=0; i<15; i++) items.push(SYMBOLS_POOL[Math.floor(Math.random()*SYMBOLS_POOL.length)]);
+  items.push(finalSymbol);
+  stripEl.innerHTML = items.map(s => `<div class="symbol">${s}</div>`).join('');
+  return items.length;
+}
+
+$('btnSlotSpin').addEventListener('click', async ()=>{
+  if(slotSpinning || !user.id || !token) return;
+  if(userPoints < slotBet){
+    showModal('Insufficient Points', `Slot spin ke liye ${slotBet} pts chahiye. Current balance: ${userPoints} pts.`, '0', '#9c2f1e');
+    return;
+  }
+
+  slotSpinning = true;
+  $('btnSlotSpin').classList.add('off');
+  $('slotStage').classList.add('spinning');
+  playSpin(); haptic('impactOccurred','medium');
+
+  const req = api('/api/slots/spin', { bet: slotBet }).catch(e=>({ __err: e }));
+
+  const s1=$('strip1'), s2=$('strip2'), s3=$('strip3');
+  s1.style.transition = 'none'; s2.style.transition = 'none'; s3.style.transition = 'none';
+  s1.style.transform = 'translateY(0)'; s2.style.transform = 'translateY(0)'; s3.style.transform = 'translateY(0)';
+
+  const res = await req;
+  $('slotStage').classList.remove('spinning');
+
+  if(res.__err || res.status !== 'ok'){
+    $('btnSlotSpin').classList.remove('off'); slotSpinning = false;
+    showModal('Error', 'Spin calculate nahi ho paya, please try again.', '0', '#9c2f1e');
+    return;
+  }
+
+  const [r1, r2, r3] = res.reels;
+  const len1 = buildReelStrip(s1, r1);
+  const len2 = buildReelStrip(s2, r2);
+  const len3 = buildReelStrip(s3, r3);
+
+  const targetY1 = -((len1 - 1) * 120);
+  const targetY2 = -((len2 - 1) * 120);
+  const targetY3 = -((len3 - 1) * 120);
+
+  s1.style.transition = 'transform 0.9s cubic-bezier(.12,.8,.25,1)';
+  s1.style.transform = `translateY(${targetY1}px)`;
+  setTimeout(()=>{ playSlotClunk(); haptic('impactOccurred','heavy'); }, 900);
+
+  setTimeout(()=>{
+    s2.style.transition = 'transform 0.9s cubic-bezier(.12,.8,.25,1)';
+    s2.style.transform = `translateY(${targetY2}px)`;
+    setTimeout(()=>{ playSlotClunk(); haptic('impactOccurred','heavy'); }, 900);
+  }, 250);
+
+  setTimeout(()=>{
+    s3.style.transition = 'transform 1.0s cubic-bezier(.12,.8,.25,1)';
+    s3.style.transform = `translateY(${targetY3}px)`;
+    setTimeout(()=>{
+      playSlotClunk(); haptic('impactOccurred','heavy');
+      updateSharedPoints(res.new_points);
+      $('slotWinDisplay').textContent = `${res.win_amount} pts`;
+      $('slotMultDisplay').textContent = `${res.multiplier}x`;
+
+      if(res.multiplier >= 1.0){
+        if(res.multiplier >= 10.0) playFanfare(); else playCash();
+        haptic('notificationOccurred','success');
+        showModal('WINNER!', `Combo match! Multiplier: ${res.multiplier}x\nNet Profit: +${res.win_amount} pts`, `+${res.win_amount}`, '#4f6b3a');
+      } else {
+        haptic('notificationOccurred','error');
+      }
+      $('btnSlotSpin').classList.remove('off');
+      slotSpinning = false;
+    }, 1000);
+  }, 500);
 });
+
+/* ==========================================================
+   GAME 3: AVIATOR / ROCKET CRASH (Unpredictable Math)
+   ========================================================== */
+let aviatorBet = 50, aviatorFlying = false, aviatorAnimId = null, aviatorStartTime = 0;
+const aviatorChips = document.querySelectorAll('#aviatorChips .chip');
+aviatorChips.forEach(c => c.addEventListener('click', ()=>{
+  if(aviatorFlying) return;
+  aviatorChips.forEach(x => x.classList.remove('active'));
+  c.classList.add('active'); aviatorBet = Number(c.dataset.bet);
+  $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
+  haptic('impactOccurred','light');
+}));
+
+const canvas = $('radarCanvas');
+const c2d = canvas.getContext('2d');
+function resizeCanvas(){
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 100);
+
+let rocketParticles = [];
+function drawAviatorRadar(elapsed, currentMult, isCrashed){
+  c2d.clearRect(0,0,canvas.width,canvas.height);
+  const w=canvas.width, h=canvas.height;
+
+  // Grid
+  c2d.strokeStyle = '#22143b'; c2d.lineWidth = 1;
+  for(let x=40; x<w; x+=50){ c2d.beginPath(); c2d.moveTo(x,0); c2d.lineTo(x,h); c2d.stroke(); }
+  for(let y=30; y<h; y+=40){ c2d.beginPath(); c2d.moveTo(0,y); c2d.lineTo(w,y); c2d.stroke(); }
+
+  if(!aviatorFlying && !isCrashed) return;
+
+  const progress = Math.min(1.0, elapsed / 15.0);
+  const rx = 30 + (w - 70) * Math.pow(progress, 0.75);
+  const ry = (h - 25) - (h - 60) * Math.pow(progress, 1.4);
+
+  const grad = c2d.createLinearGradient(0,h,rx,ry);
+  grad.addColorStop(0, 'rgba(234,179,8,0.02)');
+  grad.addColorStop(1, isCrashed ? 'rgba(220,38,38,0.25)' : 'rgba(234,179,8,0.2)');
+
+  c2d.beginPath();
+  c2d.moveTo(30, h-25);
+  c2d.quadraticCurveTo(rx*0.5, h-25, rx, ry);
+  c2d.lineTo(rx, h);
+  c2d.lineTo(30, h);
+  c2d.closePath();
+  c2d.fillStyle = grad;
+  c2d.fill();
+
+  c2d.beginPath();
+  c2d.moveTo(30, h-25);
+  c2d.quadraticCurveTo(rx*0.5, h-25, rx, ry);
+  c2d.strokeStyle = isCrashed ? '#ef4444' : '#facc15';
+  c2d.lineWidth = 3;
+  c2d.stroke();
+
+  if(!isCrashed && Math.random()<0.6){
+    rocketParticles.push({x:rx-6, y:ry+6, vx:-(Math.random()*3+1), vy:(Math.random()*2-1), life:1.0, color: Math.random()<.5?'#f97316':'#38bdf8'});
+  }
+  for(let i=rocketParticles.length-1; i>=0; i--){
+    const p = rocketParticles[i];
+    p.x += p.vx; p.y += p.vy; p.life -= 0.04;
+    if(p.life <= 0){ rocketParticles.splice(i,1); continue; }
+    c2d.fillStyle = p.color;
+    c2d.globalAlpha = p.life;
+    c2d.beginPath(); c2d.arc(p.x, p.y, 3*p.life, 0, Math.PI*2); c2d.fill();
+    c2d.globalAlpha = 1.0;
+  }
+
+  if(isCrashed){
+    c2d.font = '36px sans-serif';
+    c2d.fillText('💥', rx-18, ry+14);
+  } else {
+    c2d.save();
+    c2d.translate(rx, ry);
+    c2d.rotate(-Math.PI/6);
+    c2d.font = '28px sans-serif';
+    c2d.fillText('🚀', -14, 10);
+    c2d.restore();
+  }
+}
+
+function updateAviatorHistory(mult){
+  const hBar = $('aviatorHistory');
+  const p = document.createElement('div');
+  p.className = 'hist-pill' + (mult >= 5.0 ? ' big' : '');
+  p.textContent = `${Number(mult).toFixed(2)}x`;
+  hBar.insertBefore(p, hBar.firstChild);
+  if(hBar.children.length > 8) hBar.removeChild(hBar.lastChild);
+}
+
+const btnAviator = $('btnAviatorAction');
+btnAviator.addEventListener('click', async ()=>{
+  if(!user.id || !token) return;
+
+  if(aviatorFlying){
+    const cashMult = Number($('aviatorMult').dataset.val || 1.0);
+    try{
+      const d = await api('/api/aviator/cashout', { multiplier: cashMult });
+      if(d.status === 'cashed_out'){
+        stopJetEngine(); playCash(); haptic('notificationOccurred','success');
+        updateSharedPoints(d.new_points);
+        $('aviatorMult').className = 'mult-val won';
+        $('aviatorSub').textContent = `CASHED OUT AT ${d.multiplier.toFixed(2)}x`;
+        $('aviatorMsg').textContent = `🎉 Awesome! You won +${d.winnings} pts!`;
+        updateAviatorHistory(d.multiplier);
+        btnAviator.className = 'btn action-green';
+        $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+        $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
+        aviatorFlying = false;
+        cancelAnimationFrame(aviatorAnimId);
+        return;
+      }
+    }catch(e){
+      console.error(e);
+    }
+    return;
+  }
+
+  if(userPoints < aviatorBet){
+    showModal('Broke Kid!', `Aviator take off ke liye ${aviatorBet} pts chahiye. Balance: ${userPoints} pts.`, '0', '#9c2f1e');
+    return;
+  }
+
+  aviatorFlying = true;
+  rocketParticles = [];
+  $('aviatorMult').className = 'mult-val';
+  $('aviatorMult').textContent = '1.00x';
+  $('aviatorSub').textContent = 'FLIGHT IN PROGRESS...';
+  $('aviatorMsg').textContent = 'Push your luck or cash out in time!';
+  btnAviator.className = 'btn fire';
+  $('btnAviatorText').textContent = '💰 CASH OUT (+0 pts)';
+  $('btnAviatorSub').textContent = '1.00x';
+
+  startJetEngine();
+  haptic('impactOccurred','heavy');
+
+  let startData;
+  try{
+    startData = await api('/api/aviator/start', { bet: aviatorBet });
+    if(startData.status !== 'flying'){
+      stopJetEngine(); aviatorFlying=false;
+      showModal('Broke!', 'Could not initiate takeoff.', '0', '#9c2f1e');
+      return;
+    }
+    updateSharedPoints(startData.new_points);
+  }catch(e){
+    stopJetEngine(); aviatorFlying=false;
+    $('aviatorMsg').textContent = 'Error starting flight.';
+    btnAviator.className = 'btn action-green';
+    $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+    return;
+  }
+
+  aviatorStartTime = performance.now();
+
+  function flightLoop(now){
+    if(!aviatorFlying) return;
+    const elapsedSec = (now - aviatorStartTime) / 1000.0;
+    const currentMult = 1.00 + 0.08 * elapsedSec + 0.035 * Math.pow(elapsedSec, 1.55);
+    const estProfit = Math.floor(aviatorBet * currentMult);
+
+    $('aviatorMult').textContent = `${currentMult.toFixed(2)}x`;
+    $('aviatorMult').dataset.val = currentMult.toFixed(2);
+    $('btnAviatorText').textContent = `💰 CASH OUT (+${estProfit} pts)`;
+    $('btnAviatorSub').textContent = `${currentMult.toFixed(2)}x`;
+
+    rampJetPitch(currentMult);
+    drawAviatorRadar(elapsedSec, currentMult, false);
+
+    if(elapsedSec > 35.0){
+      triggerCrash(50.0);
+      return;
+    }
+
+    aviatorAnimId = requestAnimationFrame(flightLoop);
+  }
+  aviatorAnimId = requestAnimationFrame(flightLoop);
+
+  setTimeout(async ()=>{
+    if(!aviatorFlying) return;
+    try{
+      const check = await api('/api/aviator/crashed', {});
+      if(check.status === 'crashed' && aviatorFlying){
+        triggerCrash(check.crash_point);
+      }
+    }catch(e){}
+  }, Math.random()*12000 + 1500);
+});
+
+function triggerCrash(crashPoint){
+  if(!aviatorFlying) return;
+  aviatorFlying = false;
+  cancelAnimationFrame(aviatorAnimId);
+  stopJetEngine(); playBoom(); haptic('notificationOccurred','error');
+
+  const finalMult = Number(crashPoint || 1.00);
+  $('aviatorMult').className = 'mult-val crashed';
+  $('aviatorMult').textContent = `${finalMult.toFixed(2)}x`;
+  $('aviatorSub').textContent = '💥 FLEW AWAY';
+  $('aviatorMsg').textContent = `Rocket crashed at ${finalMult.toFixed(2)}x! Lost ${aviatorBet} pts.`;
+  btnAviator.className = 'btn action-green';
+  $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+  $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
+
+  drawAviatorRadar(10, finalMult, true);
+  updateAviatorHistory(finalMult);
+}
+
+/* ==========================================================
+   GAME 4: SHOP (The Underground Points Market)
+   ========================================================== */
+function renderShop(items, inventory){
+  const catalog = $('shopCatalog');
+  catalog.innerHTML = items.map(it => {
+    const isOwned = inventory.includes(it.id);
+    const isShield = it.type === 'shield' && userShield > 0;
+    const btnText = (isOwned || isShield) ? 'EQUIPPED / ACTIVE' : `${it.price} pts`;
+    const btnCls = (isOwned || isShield) ? 'shop-btn owned' : 'shop-btn';
+    const icon = it.id === 'shield' ? '🛡️' : it.id === 'lucky_clover' ? '🍀' : it.id === 'vip_don' ? '👑' : it.id === 'high_roller' ? '💎' : '💀';
+
+    return `
+      <div class="shop-card">
+        <div class="shop-icon">${icon}</div>
+        <div class="shop-info">
+          <h3>${it.name}</h3>
+          <p>${it.desc}</p>
+        </div>
+        <button class="${btnCls}" data-id="${it.id}" data-price="${it.price}">${btnText}</button>
+      </div>
+    `;
+  }).join('');
+
+  catalog.querySelectorAll('.shop-btn:not(.owned)').forEach(btn => {
+    btn.addEventListener('click', async ()=>{
+      const itemId = btn.dataset.id;
+      const price = Number(btn.dataset.price);
+      if(userPoints < price){
+        showModal('Kam Points Hain!', `Ye khareedne ke liye ${price} points chahiye. Current balance: ${userPoints} pts.`, '0', '#9c2f1e');
+        return;
+      }
+      try{
+        const d = await api('/api/shop/buy', { item_id: itemId });
+        if(d.status === 'purchased'){
+          playCash(); haptic('notificationOccurred','success');
+          updateSharedPoints(d.new_points);
+          if(d.shield) { userShield = 1; el.shieldTag.classList.add('active'); }
+          if(d.title) { userTitle = d.title; el.rank.textContent = `${userTitle} • #1`; }
+          btn.className = 'shop-btn owned';
+          btn.textContent = 'EQUIPPED / ACTIVE';
+          showModal('Kharid Liya!', `Congratulations! ${d.item.name} aapke account me add ho gaya hai!`, `-${price} pts`, '#4f6b3a');
+        } else if(d.status === 'broke'){
+          showModal('Broke Kid!', 'Points kam pad gaye!', '0', '#9c2f1e');
+        }
+      }catch(e){
+        showModal('Error', 'Khareed nahi paye, please try again.', '0', '#9c2f1e');
+      }
+    });
+  });
+}
+
+// Kick off
+loadUserData();
 </script>
 </body>
 </html>
