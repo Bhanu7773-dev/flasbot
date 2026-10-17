@@ -10,6 +10,7 @@ import urllib.parse
 from urllib.parse import urlparse
 import time
 import time as _time
+import math
 import os
 import re
 import json
@@ -340,7 +341,7 @@ SHOP_ITEMS = {
     "shield": {
         "id": "shield",
         "name": "Kevlar Vest 🛡️",
-        "price": 500,
+        "price": 250,
         "type": "shield",
         "desc": "Roulette me 1 goli se bachata hai! Instant life save."
     },
@@ -410,6 +411,11 @@ def sync_to_telegram_cloud():
             c = conn.cursor()
             c.execute("SELECT user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield FROM roulette_scores")
             rows = c.fetchall()
+            try:
+                c.execute("SELECT user_id, item_id, purchased_at FROM user_inventory")
+                inv_rows = c.fetchall()
+            except Exception:
+                inv_rows = []
 
         if not rows:
             return
@@ -428,11 +434,16 @@ def sync_to_telegram_cloud():
                 "shield": r[9] or 0
             }
 
+        inventories = []
+        for ir in inv_rows:
+            inventories.append({"user_id": ir[0], "item_id": ir[1], "purchased_at": ir[2]})
+
         payload = {
             "app": "flash_casino_cloud_backup",
             "updated_at": int(time.time()),
             "total_players": len(players),
-            "players": players
+            "players": players,
+            "inventory": inventories
         }
         json_bytes = json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
         bio = io.BytesIO(json_bytes)
@@ -511,9 +522,17 @@ def restore_from_telegram_cloud():
                              title = excluded.title,
                              shield = excluded.shield""",
                           (uid, p["user_name"], p["points"], p["streak"], p["best_streak"], p["wins"], p["losses"], p["last_daily"], p.get("title", "Greenhorn"), p.get("shield", 0)))
+
+            inv_list = data.get("inventory", [])
+            for item in inv_list:
+                try:
+                    c.execute("INSERT OR IGNORE INTO user_inventory (user_id, item_id, purchased_at) VALUES (?, ?, ?)",
+                              (item["user_id"], item["item_id"], item.get("purchased_at", int(time.time()))))
+                except Exception:
+                    pass
             conn.commit()
 
-        logging.info(f"✅ Successfully restored {len(players)} players from Telegram Cloud Backup!")
+        logging.info(f"✅ Successfully restored {len(players)} players and inventory from Telegram Cloud Backup!")
 
         if is_legacy_text:
             logging.info("Migrating legacy text backup to document format...")
@@ -545,11 +564,11 @@ def save_chat_message(chat_id, user_name, text, user_id=None, message_id=None, r
 
 # ----------------- RUSSIAN ROULETTE ENGINE -----------------
 ROULETTE_ROUND_POTS = {
-    1: 50,
-    2: 120,
-    3: 220,
-    4: 380,
-    5: 600
+    1: 30,
+    2: 70,
+    3: 130,
+    4: 230,
+    5: 400
 }
 
 POOR_ROULETTE_QUOTES = [
@@ -593,35 +612,42 @@ def clean_player_name(name):
         name = name.replace(ch, '')
     return name.strip() or "Player"
 
-def get_or_create_roulette_player(user_id, user_name):
-    safe_name = clean_player_name(user_name)[:32]
+def get_or_create_roulette_player(user_id, user_name=""):
+    safe_name = clean_player_name(user_name)[:32] if user_name else ""
     try:
         with sqlite3.connect(DB_PATH, timeout=10) as conn:
             c = conn.cursor()
-            c.execute("SELECT points, streak, best_streak, wins, losses, last_daily, title, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
+            c.execute("SELECT user_name, points, streak, best_streak, wins, losses, last_daily, title, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
             row = c.fetchone()
             if not row:
-                c.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield) VALUES (?, ?, 200, 0, 0, 0, 0, 0, 'Greenhorn', 0)", (user_id, safe_name))
+                fallback_name = safe_name if (safe_name and safe_name.lower() != "player") else "Player"
+                c.execute("INSERT INTO roulette_scores (user_id, user_name, points, streak, best_streak, wins, losses, last_daily, title, shield) VALUES (?, ?, 200, 0, 0, 0, 0, 0, 'Greenhorn', 0)", (user_id, fallback_name))
                 conn.commit()
-                row = (200, 0, 0, 0, 0, 0, 'Greenhorn', 0)
+                current_name = fallback_name
+                pts, streak, best_streak, wins, losses, last_daily, title, shield = 200, 0, 0, 0, 0, 0, 'Greenhorn', 0
             else:
-                c.execute("UPDATE roulette_scores SET user_name = ? WHERE user_id = ?", (safe_name, user_id))
-                conn.commit()
+                current_name = row[0] or "Player"
+                pts, streak, best_streak, wins, losses, last_daily, title, shield = row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+                # Only update stored name if safe_name is a real, non-generic name different from current_name
+                if safe_name and safe_name.lower() != "player" and safe_name != current_name:
+                    c.execute("UPDATE roulette_scores SET user_name = ? WHERE user_id = ?", (safe_name, user_id))
+                    conn.commit()
+                    current_name = safe_name
             return {
                 "user_id": user_id,
-                "user_name": safe_name,
-                "points": row[0],
-                "streak": row[1],
-                "best_streak": row[2],
-                "wins": row[3],
-                "losses": row[4],
-                "last_daily": row[5],
-                "title": row[6] or "Greenhorn",
-                "shield": row[7] or 0
+                "user_name": current_name,
+                "points": pts,
+                "streak": streak,
+                "best_streak": best_streak,
+                "wins": wins,
+                "losses": losses,
+                "last_daily": last_daily,
+                "title": title or "Greenhorn",
+                "shield": shield or 0
             }
     except Exception as e:
         logging.error(f"Error getting roulette player: {e}")
-        return {"user_id": user_id, "user_name": safe_name, "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0, "title": "Greenhorn", "shield": 0}
+        return {"user_id": user_id, "user_name": safe_name or "Player", "points": 200, "streak": 0, "best_streak": 0, "wins": 0, "losses": 0, "last_daily": 0, "title": "Greenhorn", "shield": 0}
 
 def apply_win(user_id, pts, streak_bonus=1):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -765,6 +791,42 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             self.send_json(200, player)
             return
 
+        if path == "/api/aviator/status":
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw_uid = qs.get("user_id", [None])[0]
+            token = qs.get("token", [None])[0]
+            try:
+                user_id = int(raw_uid) if raw_uid is not None else 0
+            except Exception:
+                user_id = 0
+
+            if not user_id or not token or not verify_user(user_id, token):
+                self.send_json(403, {"error": "unauthorized"})
+                return
+
+            with ROULETTE_LOCK:
+                with sqlite3.connect(DB_PATH, timeout=10) as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT bet, crash_point, start_time FROM aviator_runs WHERE user_id = ?", (user_id,))
+                    run_row = cur.fetchone()
+                    if not run_row:
+                        self.send_json(200, {"status": "idle"})
+                        return
+                    bet, crash_point, start_time = run_row[0], run_row[1], run_row[2]
+                    elapsed = max(0.0, time.time() - start_time)
+                    m = round(math.exp(0.1 * elapsed), 2)
+                    if m >= crash_point:
+                        cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
+                        cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+                        cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        new_pts = cur.fetchone()[0]
+                        conn.commit()
+                        schedule_cloud_sync()
+                        self.send_json(200, {"status": "crashed", "crash_point": crash_point, "new_points": new_pts})
+                        return
+                    self.send_json(200, {"status": "flying", "mult": m, "elapsed": elapsed})
+                    return
+
         # Default root health check
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -843,6 +905,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                             # Check if protected by Kevlar Shield
                             if user_shield > 0:
                                 cur.execute("UPDATE roulette_scores SET shield = 0 WHERE user_id = ?", (user_id,))
+                                cur.execute("DELETE FROM user_inventory WHERE user_id = ? AND item_id = 'shield'", (user_id,))
                                 cur.execute("DELETE FROM roulette_runs WHERE user_id = ?", (user_id,))
                                 cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
                                 new_pts = cur.fetchone()[0]
@@ -1046,11 +1109,6 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         return
 
             elif path == "/api/aviator/cashout":
-                try:
-                    multiplier = float(body.get("multiplier", 1.0))
-                except Exception:
-                    multiplier = 1.0
-
                 with ROULETTE_LOCK:
                     with sqlite3.connect(DB_PATH, timeout=10) as conn:
                         conn.execute("BEGIN IMMEDIATE")
@@ -1059,28 +1117,15 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         run_row = cur.fetchone()
                         if not run_row:
                             conn.commit()
-                            self.send_json(400, {"status": "no_run"})
+                            self.send_json(200, {"status": "no_run"})
                             return
 
                         bet, crash_point, start_time = run_row[0], run_row[1], run_row[2]
                         cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
+                        elapsed = max(0.0, time.time() - start_time)
+                        m = round(math.exp(0.1 * elapsed), 2)
 
-                        if multiplier <= crash_point:
-                            winnings = int(bet * multiplier)
-                            cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (winnings, user_id))
-                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
-                            new_pts = cur.fetchone()[0]
-                            conn.commit()
-                            schedule_cloud_sync()
-                            self.send_json(200, {
-                                "status": "cashed_out",
-                                "multiplier": multiplier,
-                                "winnings": winnings,
-                                "crash_point": crash_point,
-                                "new_points": new_pts
-                            })
-                            return
-                        else:
+                        if m >= crash_point:
                             cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
                             cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
                             new_pts = cur.fetchone()[0]
@@ -1092,25 +1137,59 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                                 "new_points": new_pts
                             })
                             return
+                        else:
+                            winnings = int(bet * m)
+                            net_profit = winnings - bet
+                            cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (winnings, user_id))
+                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                            new_pts = cur.fetchone()[0]
+                            conn.commit()
+                            schedule_cloud_sync()
+                            self.send_json(200, {
+                                "status": "cashed_out",
+                                "multiplier": m,
+                                "winnings": winnings,
+                                "net_profit": net_profit,
+                                "crash_point": crash_point,
+                                "new_points": new_pts
+                            })
+                            return
 
-            elif path == "/api/aviator/crashed":
+            elif path == "/api/daily":
+                now_ts = int(time.time())
                 with ROULETTE_LOCK:
                     with sqlite3.connect(DB_PATH, timeout=10) as conn:
                         conn.execute("BEGIN IMMEDIATE")
                         cur = conn.cursor()
-                        cur.execute("SELECT crash_point FROM aviator_runs WHERE user_id = ?", (user_id,))
-                        run_row = cur.fetchone()
-                        crash_point = run_row[0] if run_row else 1.0
-                        cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
-                        cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+                        cur.execute("SELECT points, last_daily FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        p_row = cur.fetchone()
+                        if not p_row:
+                            conn.commit()
+                            self.send_json(400, {"error": "user_not_found"})
+                            return
+
+                        pts, last_daily = p_row[0], p_row[1] or 0
+                        elapsed = now_ts - last_daily
+                        if elapsed < 86400:
+                            conn.commit()
+                            remaining = 86400 - elapsed
+                            self.send_json(200, {
+                                "status": "cooldown",
+                                "remaining": remaining,
+                                "points": pts
+                            })
+                            return
+
+                        cur.execute("UPDATE roulette_scores SET points = points + 100, last_daily = ? WHERE user_id = ?", (now_ts, user_id))
                         cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
                         new_pts = cur.fetchone()[0]
                         conn.commit()
                         schedule_cloud_sync()
                         self.send_json(200, {
-                            "status": "crashed",
-                            "crash_point": crash_point,
-                            "new_points": new_pts
+                            "status": "claimed",
+                            "reward": 100,
+                            "new_points": new_pts,
+                            "remaining": 86400
                         })
                         return
 
@@ -1125,11 +1204,40 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     with sqlite3.connect(DB_PATH, timeout=10) as conn:
                         conn.execute("BEGIN IMMEDIATE")
                         cur = conn.cursor()
-                        cur.execute("SELECT points, shield FROM roulette_scores WHERE user_id = ?", (user_id,))
+                        cur.execute("SELECT points, shield, title FROM roulette_scores WHERE user_id = ?", (user_id,))
                         p_row = cur.fetchone()
-                        if not p_row or p_row[0] < item["price"]:
+                        if not p_row:
                             conn.commit()
-                            self.send_json(200, {"status": "broke", "points": p_row[0] if p_row else 0})
+                            self.send_json(400, {"error": "user_not_found"})
+                            return
+
+                        pts, current_shield, current_title = p_row[0], p_row[1] or 0, p_row[2] or "Greenhorn"
+
+                        # Check if already owned
+                        cur.execute("SELECT 1 FROM user_inventory WHERE user_id = ? AND item_id = ?", (user_id, item_id))
+                        in_inventory = cur.fetchone() is not None
+
+                        if item["type"] == "shield" and current_shield == 1:
+                            conn.commit()
+                            self.send_json(200, {
+                                "status": "already_owned",
+                                "message": "You already have an active Kevlar Vest equipped!",
+                                "points": pts
+                            })
+                            return
+
+                        if item["type"] in ["title", "charm"] and in_inventory:
+                            conn.commit()
+                            self.send_json(200, {
+                                "status": "already_owned",
+                                "message": f"You already own {item['name']}!",
+                                "points": pts
+                            })
+                            return
+
+                        if pts < item["price"]:
+                            conn.commit()
+                            self.send_json(200, {"status": "broke", "points": pts})
                             return
 
                         # Deduct price
@@ -1140,7 +1248,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         elif item["type"] == "title":
                             cur.execute("UPDATE roulette_scores SET title = ? WHERE user_id = ?", (item["name"], user_id))
 
-                        cur.execute("INSERT OR IGNORE INTO user_inventory (user_id, item_id, purchased_at) VALUES (?, ?, ?)",
+                        cur.execute("INSERT OR REPLACE INTO user_inventory (user_id, item_id, purchased_at) VALUES (?, ?, ?)",
                                     (user_id, item_id, int(time.time())))
                         cur.execute("SELECT points, shield, title FROM roulette_scores WHERE user_id = ?", (user_id,))
                         updated_row = cur.fetchone()
@@ -2039,7 +2147,7 @@ def handle_games_command(message):
         f"💰 *Shared Balance:* `{player['points']} pts`\n"
         f"🛡️ *Shield:* {shield_status}\n\n"
         f"🔥 *Choose from 3 Games in the Mini-App:*\n"
-        f"1. 🔫 *Russian Roulette* — 6-Chamber survival, win up to 600 pts!\n"
+        f"1. 🔫 *Russian Roulette* — 6-Chamber survival, win up to 400 pts!\n"
         f"2. 🎰 *Casino Slots* — 3-Reel spin, 50x Lucky 777 Jackpot!\n"
         f"3. 🚀 *Aviator Crash* — Multiplier rocket, cash out before blast!\n"
         f"4. 🏪 *The Shop* — Buy Shields, Charms & VIP Titles!\n\n"
@@ -2102,7 +2210,7 @@ def handle_roulette_command(message):
         f"🎯 *Game Highlights:*\n"
         f"• 🔄 Interactive 6-Chamber Revolver Cylinder\n"
         f"• 🔊 Metallic Click, Hammer Cock & Gunshot Audio FX\n"
-        f"• 💰 Push-Your-Luck Pot: +50 ➜ +120 ➜ +220 ➜ +380 ➜ +600 pts\n"
+        f"• 💰 Push-Your-Luck Pot: +30 ➜ +70 ➜ +130 ➜ +230 ➜ +400 pts\n"
         f"• ⚠️ Goli lagi toh: -150 pts from wallet!\n\n"
         f"👇 *Neeche button tap karke Telegram ke andar khelo:*"
     )

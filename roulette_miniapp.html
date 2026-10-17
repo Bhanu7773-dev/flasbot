@@ -188,14 +188,19 @@ body{
 }
 .reel-box{
   height:120px;background:linear-gradient(180deg,#1c1007 0%,#3d2512 50%,#1c1007 100%);
-  border:2px solid #5a3818;border-radius:6px;overflow:hidden;position:relative;display:grid;place-items:center;
+  border:2px solid #5a3818;border-radius:6px;overflow:hidden;position:relative;
 }
 .reel-strip{
-  position:absolute;width:100%;display:flex;flex-direction:column;align-items:center;
-  transition:transform .4s cubic-bezier(.12,.8,.25,1);
+  position:absolute;top:0;left:0;width:100%;display:flex;flex-direction:column;align-items:center;
+  will-change:transform;
+}
+.reel-strip.looping{
+  animation:reelLoop .35s linear infinite;
+}
+@keyframes reelLoop{
+  to{ transform:translate3d(0,var(--loop),0); }
 }
 .symbol{height:120px;display:flex;align-items:center;justify-content:center;font-size:48px;line-height:1}
-.reels-stage.spinning .reel-strip{filter:blur(3px)}
 .slot-banner{
   background:#170a04;border:1px solid #4a2810;border-radius:6px;padding:8px 12px;
   display:flex;justify-content:space-between;align-items:center;font-size:13px;
@@ -206,6 +211,21 @@ body{
   color:var(--paper-dk);display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;
 }
 .paytable-card span{background:#29160a;padding:3px;border-radius:4px;border:1px solid #3c200e}
+
+/* Daily Banner */
+.daily-banner{
+  background:linear-gradient(180deg,#36230f,#1f1307);border:2px solid #6b4317;border-radius:8px;
+  padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;
+  box-shadow:0 4px 0 #0d0603;
+}
+.daily-info b{display:block;font-size:14px;color:var(--gold);font-family:var(--sans)}
+.daily-info span{font-size:11px;color:var(--paper-dk)}
+.daily-claim-btn{
+  height:34px;padding:0 14px;border-radius:6px;font-family:var(--sans);font-weight:700;font-size:12px;
+  border:1px solid #140903;cursor:pointer;background:linear-gradient(180deg,#4f7d32,#2d4c1b);color:#fff;
+  white-space:nowrap;transition:all .15s;
+}
+.daily-claim-btn:disabled{background:#251a13;color:#785c49;border-color:#382519;cursor:not-allowed}
 
 /* --- TAB 3: AVIATOR --- */
 .aviator-arena{
@@ -257,7 +277,7 @@ body{
   background:var(--paper);color:var(--ink);border:3px solid var(--ink);border-radius:6px;box-shadow:inset 0 0 0 5px var(--paper),inset 0 0 0 7px var(--ink),0 10px 0 #130a04;animation:pop .3s ease-out}
 @keyframes pop{from{transform:scale(.92);opacity:0}}
 .card h2{font-family:var(--display);font-size:26px;line-height:1.1}
-.card p{font-size:13px;line-height:1.4}
+.card p{font-size:13px;line-height:1.4;white-space:pre-line}
 .delta{width:100%;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);padding:8px 0;font-family:var(--display);font-size:36px;line-height:1}
 .card .btn{width:100%;margin-top:4px;grid-template-columns:1fr;text-align:center}
 .card .btn span{text-align:center}
@@ -300,6 +320,15 @@ body{
       <p>Choose an option below • Shared Points Wallet</p>
     </div>
 
+    <!-- Daily Bonus Card -->
+    <div class="daily-banner" id="dailyBanner">
+      <div class="daily-info">
+        <b>🎁 Daily Bonus: +100 pts</b>
+        <span id="dailyCountdown">Free every 24 hours</span>
+      </div>
+      <button class="daily-claim-btn" id="btnClaimDaily">CLAIM +100</button>
+    </div>
+
     <div class="game-cards-list">
       <!-- Option 1: Russian Roulette -->
       <div class="game-card" data-target="roulette">
@@ -311,9 +340,9 @@ body{
             <span class="game-type-tag">Push Your Luck • 6-Chamber Revolver</span>
           </div>
         </div>
-        <p class="game-desc">Cock the hammer and test your fate! Survive up to 5 rounds to multiply your pot up to +600 pts, or cash out safely.</p>
+        <p class="game-desc">Cock the hammer and test your fate! Survive up to 5 rounds to multiply your pot up to +400 pts, or cash out safely.</p>
         <div class="game-card-footer">
-          <div class="game-limits">Risk: <b>150 pts</b> | Jackpot: <b>+600 pts</b></div>
+          <div class="game-limits">Risk: <b>150 pts</b> | Jackpot: <b>+400 pts</b></div>
           <button class="game-play-btn">PLAY ROULETTE 🔫</button>
         </div>
       </div>
@@ -420,7 +449,7 @@ body{
     <div class="slot-cabinet">
       <div class="slot-header">
         <h2>⚡ HIGH ROLLER SLOTS ⚡</h2>
-        <p>Provably Fair • Instant Shared Wallet Payouts</p>
+        <p>Casino Reel RNG • Instant Shared Wallet Payouts</p>
       </div>
       <div class="reels-stage" id="slotStage">
         <div class="win-line-guide"></div>
@@ -445,7 +474,10 @@ body{
         <span>💎💎💎 = 20x</span>
         <span>🔔🔔🔔 = 10x</span>
         <span>🍇🍇🍇 = 6x</span>
+        <span>🍋🍋🍋 = 4x</span>
+        <span>🍒🍒🍒 = 3x</span>
         <span>Pair = Up to 3x</span>
+        <span>RTP: ~84%</span>
       </div>
     </div>
   </div>
@@ -610,15 +642,19 @@ const haptic=(k,t)=>{ try{ tg?.HapticFeedback?.[k](t); }catch(e){} };
 /* --- USER & APP STATE --- */
 const qs = new URLSearchParams(location.search);
 const token = qs.get('token') || '';
+const rawName = qs.get('user_name') || tg?.initDataUnsafe?.user?.first_name || '';
 const user = {
-  id: parseInt(qs.get('user_id')) || 0,
-  name: qs.get('user_name') || tg?.initDataUnsafe?.user?.first_name || 'Player'
+  id: parseInt(qs.get('user_id')) || tg?.initDataUnsafe?.user?.id || 0,
+  name: rawName && rawName.toLowerCase() !== 'player' ? rawName : (tg?.initDataUnsafe?.user?.first_name || 'Player')
 };
 let userPoints = 200, userShield = 0, userTitle = 'Greenhorn';
+let cachedShopItems = [], cachedInventory = [];
 
 async function api(path, body){
   const isPost = body !== undefined;
-  const url = isPost ? path : `${path}?user_id=${user.id}&token=${encodeURIComponent(token)}`;
+  const qToken = encodeURIComponent(token);
+  const qName = encodeURIComponent(user.name);
+  const url = isPost ? path : `${path}?user_id=${user.id}&token=${qToken}&user_name=${qName}`;
   const opt = isPost ? {method:'POST',headers:{'Content-Type':'application/json'},
                         body:JSON.stringify({user_id:user.id,token,user_name:user.name,...body})} : {};
   const r = await fetch(url,opt);
@@ -677,20 +713,74 @@ document.querySelectorAll('.game-card, .btn-back-lobby, .back-btn').forEach(el =
   });
 });
 
-// Default tab: lobby (the 3 games option screen)
-const initTab = qs.get('tab') || 'lobby';
-if(['lobby','roulette','slots','aviator','shop'].includes(initTab)) switchTab(initTab);
+/* --- DAILY BONUS UI & TIMER --- */
+let dailyCountdownTimer = null;
+function updateDailyUI(secondsRemaining){
+  const btn = $('btnClaimDaily');
+  const countEl = $('dailyCountdown');
+  if(!btn || !countEl) return;
+  clearInterval(dailyCountdownTimer);
+  if(secondsRemaining <= 0){
+    btn.disabled = false;
+    btn.textContent = 'CLAIM +100';
+    countEl.textContent = 'Ready to claim right now!';
+  } else {
+    btn.disabled = true;
+    let rem = secondsRemaining;
+    function tick(){
+      if(rem <= 0){
+        btn.disabled = false;
+        btn.textContent = 'CLAIM +100';
+        countEl.textContent = 'Ready to claim right now!';
+        clearInterval(dailyCountdownTimer);
+        return;
+      }
+      const h = Math.floor(rem / 3600);
+      const m = Math.floor((rem % 3600) / 60);
+      const s = rem % 60;
+      btn.textContent = `${h}h ${m}m ${s}s`;
+      countEl.textContent = `Next bonus in ${h}h ${m}m`;
+      rem--;
+    }
+    tick();
+    dailyCountdownTimer = setInterval(tick, 1000);
+  }
+}
+
+$('btnClaimDaily')?.addEventListener('click', async ()=>{
+  if(!user.id || !token) return;
+  try{
+    const d = await api('/api/daily', {});
+    if(d.status === 'claimed'){
+      playCash(); playFanfare(); haptic('notificationOccurred', 'success');
+      updateSharedPoints(d.new_points);
+      updateDailyUI(d.remaining || 86400);
+      showModal('Daily Reward Claimed! 🎁', 'Aapko +100 free points mil gaye!\nKal phir aana bonus ke liye.', '+100 pts', '#4f6b3a');
+    } else if(d.status === 'cooldown'){
+      updateDailyUI(d.remaining);
+      showModal('Cooldown Active', 'Aapne aaj ka bonus pehle hi claim kar liya hai.', '0 pts', '#9c2f1e');
+    }
+  }catch(e){
+    showModal('Error', 'Daily claim nahi ho paya. Please try again.', '0', '#9c2f1e');
+  }
+});
 
 /* --- LOAD INITIAL USER DATA --- */
 async function loadUserData(){
   if(!user.id || !token) return;
   try{
     const d = await api('/api/player');
+    if(d.user_name && d.user_name.toLowerCase() !== 'player'){
+      user.name = d.user_name;
+      el.name.textContent = user.name;
+      el.avatar.textContent = user.name.charAt(0).toUpperCase();
+    }
     updateSharedPoints(d.points);
     userTitle = d.title || 'Greenhorn';
     userShield = Number(d.shield) || 0;
     el.rank.textContent = `${userTitle} • #${d.rank || 1}`;
     el.shieldTag.classList.toggle('active', userShield > 0);
+    updateDailyUI(d.daily_in || 0);
 
     // Roulette resume
     if(d.run){
@@ -708,7 +798,9 @@ async function loadUserData(){
       r_updateUI();
     }
 
-    renderShop(d.shop_items || [], d.inventory || []);
+    cachedShopItems = d.shop_items || [];
+    cachedInventory = d.inventory || [];
+    renderShop(cachedShopItems, cachedInventory);
   }catch(e){
     console.error('Player load error:', e);
   }
@@ -718,7 +810,7 @@ async function loadUserData(){
    GAME 1: RUSSIAN ROULETTE
    ========================================================== */
 let r_round=1, r_currentPot=0, r_isSpinning=false, r_rotation=0;
-const r_pots={1:50,2:120,3:220,4:380,5:600};
+const r_pots={1:30,2:70,3:130,4:230,5:400};
 const r_rev=$('revolverSvg'), r_arena=$('arenaCard'), r_status=$('statusBanner'),
       r_fire=$('btnFire'), r_fireText=$('btnFireText'), r_fireSub=$('btnFireSub'),
       r_cash=$('btnCashout'), r_cashText=$('btnCashoutText'), r_ladder=$('ladder'),
@@ -776,7 +868,10 @@ r_fire.addEventListener('click', async ()=>{
 
   if(data.status === 'shield_saved'){
     playBoom(); haptic('notificationOccurred','warning');
+    userShield = 0;
     el.shieldTag.classList.remove('active');
+    cachedInventory = cachedInventory.filter(id => id !== 'shield');
+    renderShop(cachedShopItems, cachedInventory);
     r_setStatus('<b>BLAM!</b> Shield absorbed the bullet!', 'good');
     updateSharedPoints(data.new_points);
     showModal('🛡️ Shield Saved You!', 'Aapke Kevlar Vest ne bullet absorb kar li! Points bach gaye par shield break ho gaya.', '0 pts', '#4f6b3a');
@@ -852,18 +947,39 @@ r_cash.addEventListener('click', async ()=>{
 let slotBet = 50, slotSpinning = false;
 const slotsChips = document.querySelectorAll('#slotsChips .chip');
 slotsChips.forEach(c => c.addEventListener('click', ()=>{
+  if(slotSpinning) return;
   slotsChips.forEach(x => x.classList.remove('active'));
   c.classList.add('active'); slotBet = Number(c.dataset.bet);
   haptic('impactOccurred','light');
 }));
 
 const SYMBOLS_POOL = ["🍒", "🍋", "🍇", "🔔", "💎", "7️⃣", "⭐"];
-function buildReelStrip(stripEl, finalSymbol){
-  let items = [];
-  for(let i=0; i<15; i++) items.push(SYMBOLS_POOL[Math.floor(Math.random()*SYMBOLS_POOL.length)]);
-  items.push(finalSymbol);
-  stripEl.innerHTML = items.map(s => `<div class="symbol">${s}</div>`).join('');
-  return items.length;
+const SYM_H = 120;
+const rndSym = () => SYMBOLS_POOL[Math.floor(Math.random() * SYMBOLS_POOL.length)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function startReel(strip){
+  const base = Array.from({length: 10}, rndSym);
+  strip.innerHTML = [...base, ...base].map(s => `<div class="symbol">${s}</div>`).join('');
+  strip.style.transition = 'none';
+  strip.style.transform = 'translate3d(0,0,0)';
+  strip.style.setProperty('--loop', `-${10 * SYM_H}px`);
+  strip.classList.add('looping');
+}
+
+async function stopReel(strip, finalSym, delay){
+  await sleep(delay);
+  strip.classList.remove('looping');
+  const items = [...Array.from({length: 14}, rndSym), finalSym];
+  strip.innerHTML = items.map(s => `<div class="symbol">${s}</div>`).join('');
+  strip.style.transition = 'none';
+  strip.style.transform = 'translate3d(0,0,0)';
+  void strip.offsetHeight; // force reflow
+  strip.style.transition = 'transform .8s cubic-bezier(.2,.9,.3,1.12)';
+  strip.style.transform = `translate3d(0,-${(items.length - 1) * SYM_H}px,0)`;
+  await sleep(820);
+  playSlotClunk();
+  haptic('impactOccurred', 'heavy');
 }
 
 $('btnSlotSpin').addEventListener('click', async ()=>{
@@ -875,69 +991,55 @@ $('btnSlotSpin').addEventListener('click', async ()=>{
 
   slotSpinning = true;
   $('btnSlotSpin').classList.add('off');
-  $('slotStage').classList.add('spinning');
   playSpin(); haptic('impactOccurred','medium');
 
-  const req = api('/api/slots/spin', { bet: slotBet }).catch(e=>({ __err: e }));
+  const s1 = $('strip1'), s2 = $('strip2'), s3 = $('strip3');
+  [s1, s2, s3].forEach(startReel);
 
-  const s1=$('strip1'), s2=$('strip2'), s3=$('strip3');
-  s1.style.transition = 'none'; s2.style.transition = 'none'; s3.style.transition = 'none';
-  s1.style.transform = 'translateY(0)'; s2.style.transform = 'translateY(0)'; s3.style.transform = 'translateY(0)';
-
-  const res = await req;
-  $('slotStage').classList.remove('spinning');
+  const req = api('/api/slots/spin', { bet: slotBet }).catch(e => ({ __err: e }));
+  const [res] = await Promise.all([req, sleep(700)]);
 
   if(res.__err || res.status !== 'ok'){
-    $('btnSlotSpin').classList.remove('off'); slotSpinning = false;
+    [s1, s2, s3].forEach(s => s.classList.remove('looping'));
+    $('btnSlotSpin').classList.remove('off');
+    slotSpinning = false;
     showModal('Error', 'Spin calculate nahi ho paya, please try again.', '0', '#9c2f1e');
     return;
   }
 
   const [r1, r2, r3] = res.reels;
-  const len1 = buildReelStrip(s1, r1);
-  const len2 = buildReelStrip(s2, r2);
-  const len3 = buildReelStrip(s3, r3);
+  await Promise.all([
+    stopReel(s1, r1, 0),
+    stopReel(s2, r2, 250),
+    stopReel(s3, r3, 500)
+  ]);
 
-  const targetY1 = -((len1 - 1) * 120);
-  const targetY2 = -((len2 - 1) * 120);
-  const targetY3 = -((len3 - 1) * 120);
+  updateSharedPoints(res.new_points);
+  $('slotWinDisplay').textContent = `${res.win_amount} pts`;
+  $('slotMultDisplay').textContent = `${res.multiplier}x`;
 
-  s1.style.transition = 'transform 0.9s cubic-bezier(.12,.8,.25,1)';
-  s1.style.transform = `translateY(${targetY1}px)`;
-  setTimeout(()=>{ playSlotClunk(); haptic('impactOccurred','heavy'); }, 900);
-
-  setTimeout(()=>{
-    s2.style.transition = 'transform 0.9s cubic-bezier(.12,.8,.25,1)';
-    s2.style.transform = `translateY(${targetY2}px)`;
-    setTimeout(()=>{ playSlotClunk(); haptic('impactOccurred','heavy'); }, 900);
-  }, 250);
-
-  setTimeout(()=>{
-    s3.style.transition = 'transform 1.0s cubic-bezier(.12,.8,.25,1)';
-    s3.style.transform = `translateY(${targetY3}px)`;
-    setTimeout(()=>{
-      playSlotClunk(); haptic('impactOccurred','heavy');
-      updateSharedPoints(res.new_points);
-      $('slotWinDisplay').textContent = `${res.win_amount} pts`;
-      $('slotMultDisplay').textContent = `${res.multiplier}x`;
-
-      if(res.multiplier >= 1.0){
-        if(res.multiplier >= 10.0) playFanfare(); else playCash();
-        haptic('notificationOccurred','success');
-        showModal('WINNER!', `Combo match! Multiplier: ${res.multiplier}x\nNet Profit: +${res.win_amount} pts`, `+${res.win_amount}`, '#4f6b3a');
-      } else {
-        haptic('notificationOccurred','error');
-      }
-      $('btnSlotSpin').classList.remove('off');
-      slotSpinning = false;
-    }, 1000);
-  }, 500);
+  const netChange = res.net_change !== undefined ? res.net_change : (res.win_amount - slotBet);
+  if(netChange > 0){
+    if(res.multiplier >= 10.0) playFanfare(); else playCash();
+    haptic('notificationOccurred','success');
+    showModal('WINNER!', `Combo match! Multiplier: ${res.multiplier}x\nNet Profit: +${netChange} pts`, `+${netChange} pts`, '#4f6b3a');
+  } else if(res.multiplier === 1.0){
+    haptic('impactOccurred','medium');
+    showModal('PUSH', 'Bet returned.\nNo loss, no gain.', '0 pts', '#3d2512');
+  } else {
+    haptic('notificationOccurred','error');
+  }
+  $('btnSlotSpin').classList.remove('off');
+  slotSpinning = false;
 });
 
 /* ==========================================================
-   GAME 3: AVIATOR / ROCKET CRASH (Unpredictable Math)
+   GAME 3: AVIATOR / ROCKET CRASH (Server-Authoritative Math)
    ========================================================== */
-let aviatorBet = 50, aviatorFlying = false, aviatorAnimId = null, aviatorStartTime = 0;
+let aviatorBet = 50, aviatorFlying = false, aviatorStartTime = 0;
+let aviatorPollTimer = null;
+let aviatorFlyAway = false, aviatorFlyAwayStart = 0;
+
 const aviatorChips = document.querySelectorAll('#aviatorChips .chip');
 aviatorChips.forEach(c => c.addEventListener('click', ()=>{
   if(aviatorFlying) return;
@@ -949,74 +1051,185 @@ aviatorChips.forEach(c => c.addEventListener('click', ()=>{
 
 const canvas = $('radarCanvas');
 const c2d = canvas.getContext('2d');
+let dpr = window.devicePixelRatio || 1;
+
 function resizeCanvas(){
-  canvas.width = canvas.parentElement.clientWidth;
-  canvas.height = canvas.parentElement.clientHeight;
+  dpr = window.devicePixelRatio || 1;
+  const parent = canvas.parentElement;
+  if(!parent) return;
+  const rect = parent.getBoundingClientRect();
+  if(rect.width === 0 || rect.height === 0) return;
+  canvas.width = Math.floor(rect.width * dpr);
+  canvas.height = Math.floor(rect.height * dpr);
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
 }
 window.addEventListener('resize', resizeCanvas);
-setTimeout(resizeCanvas, 100);
+setTimeout(resizeCanvas, 50);
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden && aviatorFlying){
+    stopJetEngine();
+  } else if(!document.hidden && aviatorFlying && !soundMuted){
+    startJetEngine();
+  }
+});
+
+function plotAviatorCurve(elapsed, w, h){
+  const m = Math.exp(0.1 * elapsed);
+  const maxM = Math.max(2.0, m * 1.25);
+  const maxT = Math.max(8.0, elapsed * 1.15);
+  const pts = [];
+  for(let i = 0; i <= 40; i++){
+    const t = elapsed * i / 40;
+    const mm = Math.exp(0.1 * t);
+    const px = 30 + (w - 70) * (t / maxT);
+    const py = (h - 25) - (h - 60) * (Math.log(mm) / Math.log(maxM));
+    pts.push([px, py]);
+  }
+  return { pts, m, maxM, maxT };
+}
 
 let rocketParticles = [];
-function drawAviatorRadar(elapsed, currentMult, isCrashed){
-  c2d.clearRect(0,0,canvas.width,canvas.height);
-  const w=canvas.width, h=canvas.height;
+function drawRadarFrame(now){
+  const parent = canvas.parentElement;
+  if(!parent) return;
+  const rect = parent.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  if(w === 0 || h === 0) return;
 
-  // Grid
+  c2d.save();
+  c2d.scale(dpr, dpr);
+  c2d.clearRect(0, 0, w, h);
+
+  // Background Grid
   c2d.strokeStyle = '#22143b'; c2d.lineWidth = 1;
-  for(let x=40; x<w; x+=50){ c2d.beginPath(); c2d.moveTo(x,0); c2d.lineTo(x,h); c2d.stroke(); }
-  for(let y=30; y<h; y+=40){ c2d.beginPath(); c2d.moveTo(0,y); c2d.lineTo(w,y); c2d.stroke(); }
+  for(let x = 40; x < w; x += 50){ c2d.beginPath(); c2d.moveTo(x, 0); c2d.lineTo(x, h); c2d.stroke(); }
+  for(let y = 30; y < h; y += 40){ c2d.beginPath(); c2d.moveTo(0, y); c2d.lineTo(w, y); c2d.stroke(); }
 
-  if(!aviatorFlying && !isCrashed) return;
+  const isCrashed = $('aviatorMult').classList.contains('crashed');
 
-  const progress = Math.min(1.0, elapsed / 15.0);
-  const rx = 30 + (w - 70) * Math.pow(progress, 0.75);
-  const ry = (h - 25) - (h - 60) * Math.pow(progress, 1.4);
+  // IDLE STATE: Bobbing rocket on launchpad
+  if(!aviatorFlying && !aviatorFlyAway && !isCrashed){
+    const bob = Math.sin(now * 0.004) * 3;
+    const padX = 35;
+    const padY = h - 30 + bob;
 
-  const grad = c2d.createLinearGradient(0,h,rx,ry);
-  grad.addColorStop(0, 'rgba(234,179,8,0.02)');
-  grad.addColorStop(1, isCrashed ? 'rgba(220,38,38,0.25)' : 'rgba(234,179,8,0.2)');
+    c2d.fillStyle = 'rgba(234,179,8,0.12)';
+    c2d.beginPath();
+    c2d.arc(padX, padY, 18, 0, Math.PI * 2);
+    c2d.fill();
 
-  c2d.beginPath();
-  c2d.moveTo(30, h-25);
-  c2d.quadraticCurveTo(rx*0.5, h-25, rx, ry);
-  c2d.lineTo(rx, h);
-  c2d.lineTo(30, h);
-  c2d.closePath();
-  c2d.fillStyle = grad;
-  c2d.fill();
-
-  c2d.beginPath();
-  c2d.moveTo(30, h-25);
-  c2d.quadraticCurveTo(rx*0.5, h-25, rx, ry);
-  c2d.strokeStyle = isCrashed ? '#ef4444' : '#facc15';
-  c2d.lineWidth = 3;
-  c2d.stroke();
-
-  if(!isCrashed && Math.random()<0.6){
-    rocketParticles.push({x:rx-6, y:ry+6, vx:-(Math.random()*3+1), vy:(Math.random()*2-1), life:1.0, color: Math.random()<.5?'#f97316':'#38bdf8'});
+    c2d.save();
+    c2d.translate(padX, padY);
+    c2d.rotate(-Math.PI / 8);
+    c2d.font = '28px sans-serif';
+    c2d.fillText('🚀', -14, 10);
+    c2d.restore();
+    c2d.restore();
+    return;
   }
-  for(let i=rocketParticles.length-1; i>=0; i--){
+
+  // ACTIVE FLIGHT OR RESULT STATE
+  const elapsedSec = aviatorStartTime ? (now - aviatorStartTime) / 1000.0 : 0;
+  const { pts, m } = plotAviatorCurve(elapsedSec, w, h);
+  const lastPt = pts[pts.length - 1];
+  let rx = lastPt[0], ry = lastPt[1];
+
+  // Fill curve under path
+  if(pts.length > 1){
+    const grad = c2d.createLinearGradient(0, h, rx, ry);
+    grad.addColorStop(0, 'rgba(234,179,8,0.02)');
+    grad.addColorStop(1, isCrashed ? 'rgba(220,38,38,0.25)' : 'rgba(234,179,8,0.2)');
+
+    c2d.beginPath();
+    c2d.moveTo(pts[0][0], h - 25);
+    for(let i = 0; i < pts.length; i++) c2d.lineTo(pts[i][0], pts[i][1]);
+    c2d.lineTo(rx, h);
+    c2d.lineTo(pts[0][0], h);
+    c2d.closePath();
+    c2d.fillStyle = grad;
+    c2d.fill();
+
+    c2d.beginPath();
+    c2d.moveTo(pts[0][0], pts[0][1]);
+    for(let i = 1; i < pts.length; i++) c2d.lineTo(pts[i][0], pts[i][1]);
+    c2d.strokeStyle = isCrashed ? '#ef4444' : '#facc15';
+    c2d.lineWidth = 3;
+    c2d.stroke();
+  }
+
+  // Trajectory angle
+  let angle = -Math.PI / 6;
+  if(pts.length >= 2){
+    const prev = pts[pts.length - 2];
+    angle = Math.atan2(lastPt[1] - prev[1], lastPt[0] - prev[0]);
+  }
+
+  // Thruster particle sparks
+  if(aviatorFlying && !isCrashed && Math.random() < 0.7){
+    rocketParticles.push({
+      x: rx - Math.cos(angle) * 12,
+      y: ry - Math.sin(angle) * 12,
+      vx: -Math.cos(angle) * (Math.random() * 3 + 2) + (Math.random() - 0.5),
+      vy: -Math.sin(angle) * (Math.random() * 3 + 2) + (Math.random() - 0.5),
+      life: 1.0,
+      color: Math.random() < 0.5 ? '#f97316' : '#38bdf8'
+    });
+  }
+  for(let i = rocketParticles.length - 1; i >= 0; i--){
     const p = rocketParticles[i];
-    p.x += p.vx; p.y += p.vy; p.life -= 0.04;
-    if(p.life <= 0){ rocketParticles.splice(i,1); continue; }
+    p.x += p.vx; p.y += p.vy; p.life -= 0.05;
+    if(p.life <= 0){ rocketParticles.splice(i, 1); continue; }
     c2d.fillStyle = p.color;
     c2d.globalAlpha = p.life;
-    c2d.beginPath(); c2d.arc(p.x, p.y, 3*p.life, 0, Math.PI*2); c2d.fill();
+    c2d.beginPath(); c2d.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2); c2d.fill();
     c2d.globalAlpha = 1.0;
   }
 
+  // Draw Rocket or Explosion
   if(isCrashed){
     c2d.font = '36px sans-serif';
-    c2d.fillText('💥', rx-18, ry+14);
+    c2d.fillText('💥', rx - 18, ry + 14);
+  } else if(aviatorFlyAway){
+    const flyProg = Math.min(1.0, (now - aviatorFlyAwayStart) / 600.0);
+    const fx = rx + flyProg * (w * 0.5);
+    const fy = ry - flyProg * (h * 0.5);
+    c2d.save();
+    c2d.translate(fx, fy);
+    c2d.rotate(angle);
+    c2d.font = '28px sans-serif';
+    c2d.fillText('🚀', -14, 10);
+    c2d.restore();
   } else {
     c2d.save();
     c2d.translate(rx, ry);
-    c2d.rotate(-Math.PI/6);
+    c2d.rotate(angle);
     c2d.font = '28px sans-serif';
     c2d.fillText('🚀', -14, 10);
     c2d.restore();
   }
+
+  c2d.restore();
+
+  // Update live multiplier in DOM while flying
+  if(aviatorFlying){
+    const currentMult = Math.min(50.0, Math.exp(0.1 * elapsedSec));
+    const estWinnings = Math.floor(aviatorBet * currentMult);
+    $('aviatorMult').textContent = `${currentMult.toFixed(2)}x`;
+    $('btnAviatorText').textContent = `💰 CASH OUT (+${estWinnings} pts)`;
+    $('btnAviatorSub').textContent = `${currentMult.toFixed(2)}x`;
+    rampJetPitch(currentMult);
+  }
 }
+
+// Continuous smooth animation loop
+function aviatorAnimationLoop(now){
+  drawRadarFrame(now);
+  requestAnimationFrame(aviatorAnimationLoop);
+}
+requestAnimationFrame(aviatorAnimationLoop);
 
 function updateAviatorHistory(mult){
   const hBar = $('aviatorHistory');
@@ -1027,129 +1240,134 @@ function updateAviatorHistory(mult){
   if(hBar.children.length > 8) hBar.removeChild(hBar.lastChild);
 }
 
-const btnAviator = $('btnAviatorAction');
-btnAviator.addEventListener('click', async ()=>{
-  if(!user.id || !token) return;
-
-  if(aviatorFlying){
-    const cashMult = Number($('aviatorMult').dataset.val || 1.0);
-    try{
-      const d = await api('/api/aviator/cashout', { multiplier: cashMult });
-      if(d.status === 'cashed_out'){
-        stopJetEngine(); playCash(); haptic('notificationOccurred','success');
-        updateSharedPoints(d.new_points);
-        $('aviatorMult').className = 'mult-val won';
-        $('aviatorSub').textContent = `CASHED OUT AT ${d.multiplier.toFixed(2)}x`;
-        $('aviatorMsg').textContent = `🎉 Awesome! You won +${d.winnings} pts!`;
-        updateAviatorHistory(d.multiplier);
-        btnAviator.className = 'btn action-green';
-        $('btnAviatorText').textContent = 'TAKE OFF 🚀';
-        $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
-        aviatorFlying = false;
-        cancelAnimationFrame(aviatorAnimId);
-        return;
-      }
-    }catch(e){
-      console.error(e);
-    }
-    return;
-  }
-
-  if(userPoints < aviatorBet){
-    showModal('Broke Kid!', `Aviator take off ke liye ${aviatorBet} pts chahiye. Balance: ${userPoints} pts.`, '0', '#9c2f1e');
-    return;
-  }
-
-  aviatorFlying = true;
-  rocketParticles = [];
-  $('aviatorMult').className = 'mult-val';
-  $('aviatorMult').textContent = '1.00x';
-  $('aviatorSub').textContent = 'FLIGHT IN PROGRESS...';
-  $('aviatorMsg').textContent = 'Push your luck or cash out in time!';
-  btnAviator.className = 'btn fire';
-  $('btnAviatorText').textContent = '💰 CASH OUT (+0 pts)';
-  $('btnAviatorSub').textContent = '1.00x';
-
-  startJetEngine();
-  haptic('impactOccurred','heavy');
-
-  let startData;
-  try{
-    startData = await api('/api/aviator/start', { bet: aviatorBet });
-    if(startData.status !== 'flying'){
-      stopJetEngine(); aviatorFlying=false;
-      showModal('Broke!', 'Could not initiate takeoff.', '0', '#9c2f1e');
-      return;
-    }
-    updateSharedPoints(startData.new_points);
-  }catch(e){
-    stopJetEngine(); aviatorFlying=false;
-    $('aviatorMsg').textContent = 'Error starting flight.';
-    btnAviator.className = 'btn action-green';
-    $('btnAviatorText').textContent = 'TAKE OFF 🚀';
-    return;
-  }
-
-  aviatorStartTime = performance.now();
-
-  function flightLoop(now){
-    if(!aviatorFlying) return;
-    const elapsedSec = (now - aviatorStartTime) / 1000.0;
-    const currentMult = 1.00 + 0.08 * elapsedSec + 0.035 * Math.pow(elapsedSec, 1.55);
-    const estProfit = Math.floor(aviatorBet * currentMult);
-
-    $('aviatorMult').textContent = `${currentMult.toFixed(2)}x`;
-    $('aviatorMult').dataset.val = currentMult.toFixed(2);
-    $('btnAviatorText').textContent = `💰 CASH OUT (+${estProfit} pts)`;
-    $('btnAviatorSub').textContent = `${currentMult.toFixed(2)}x`;
-
-    rampJetPitch(currentMult);
-    drawAviatorRadar(elapsedSec, currentMult, false);
-
-    if(elapsedSec > 35.0){
-      triggerCrash(50.0);
-      return;
-    }
-
-    aviatorAnimId = requestAnimationFrame(flightLoop);
-  }
-  aviatorAnimId = requestAnimationFrame(flightLoop);
-
-  setTimeout(async ()=>{
-    if(!aviatorFlying) return;
-    try{
-      const check = await api('/api/aviator/crashed', {});
-      if(check.status === 'crashed' && aviatorFlying){
-        triggerCrash(check.crash_point);
-      }
-    }catch(e){}
-  }, Math.random()*12000 + 1500);
-});
-
-function triggerCrash(crashPoint){
-  if(!aviatorFlying) return;
+function triggerCrash(crashPoint, newPoints){
+  if(!aviatorFlying && !$('aviatorMult').classList.contains('crashed') && !aviatorFlyAway) return;
   aviatorFlying = false;
-  cancelAnimationFrame(aviatorAnimId);
+  clearInterval(aviatorPollTimer);
   stopJetEngine(); playBoom(); haptic('notificationOccurred','error');
 
   const finalMult = Number(crashPoint || 1.00);
   $('aviatorMult').className = 'mult-val crashed';
   $('aviatorMult').textContent = `${finalMult.toFixed(2)}x`;
-  $('aviatorSub').textContent = '💥 FLEW AWAY';
-  $('aviatorMsg').textContent = `Rocket crashed at ${finalMult.toFixed(2)}x! Lost ${aviatorBet} pts.`;
+  $('aviatorSub').textContent = '💥 CRASHED';
+  $('aviatorMsg').textContent = `Rocket blasted at ${finalMult.toFixed(2)}x! Lost ${aviatorBet} pts.`;
   btnAviator.className = 'btn action-green';
+  btnAviator.disabled = false;
   $('btnAviatorText').textContent = 'TAKE OFF 🚀';
   $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
 
-  drawAviatorRadar(10, finalMult, true);
+  if(newPoints !== undefined) updateSharedPoints(newPoints);
   updateAviatorHistory(finalMult);
 }
+
+function triggerCashoutSuccess(d){
+  aviatorFlying = false;
+  clearInterval(aviatorPollTimer);
+  stopJetEngine(); playCash(); playFanfare(); haptic('notificationOccurred','success');
+
+  aviatorFlyAway = true;
+  aviatorFlyAwayStart = performance.now();
+
+  updateSharedPoints(d.new_points);
+  $('aviatorMult').className = 'mult-val won';
+  $('aviatorSub').textContent = `CASHED OUT AT ${d.multiplier.toFixed(2)}x`;
+  $('aviatorMsg').textContent = `🎉 Awesome! You won +${d.winnings} pts! (+${d.net_profit} net profit)`;
+  updateAviatorHistory(d.multiplier);
+
+  btnAviator.className = 'btn action-green';
+  btnAviator.disabled = false;
+  $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+  $('btnAviatorSub').textContent = `Bet ${aviatorBet} pts`;
+}
+
+function startAviatorPolling(){
+  clearInterval(aviatorPollTimer);
+  aviatorPollTimer = setInterval(async ()=>{
+    if(!aviatorFlying){ clearInterval(aviatorPollTimer); return; }
+    try{
+      const s = await api('/api/aviator/status');
+      if(s.status === 'crashed' && aviatorFlying){
+        clearInterval(aviatorPollTimer);
+        triggerCrash(s.crash_point, s.new_points);
+      }
+    }catch(e){}
+  }, 250);
+}
+
+const btnAviator = $('btnAviatorAction');
+btnAviator.addEventListener('click', async ()=>{
+  if(!user.id || !token) return;
+
+  // CASHOUT CLICK
+  if(aviatorFlying){
+    btnAviator.disabled = true;
+    try{
+      const d = await api('/api/aviator/cashout');
+      if(d.status === 'cashed_out'){
+        triggerCashoutSuccess(d);
+      } else if(d.status === 'crashed'){
+        triggerCrash(d.crash_point, d.new_points);
+      } else {
+        btnAviator.disabled = false;
+      }
+    }catch(e){
+      btnAviator.disabled = false;
+    }
+    return;
+  }
+
+  // TAKEOFF CLICK
+  if(userPoints < aviatorBet){
+    showModal('Broke Kid!', `Aviator take off ke liye ${aviatorBet} pts chahiye. Balance: ${userPoints} pts.`, '0', '#9c2f1e');
+    return;
+  }
+
+  // Loading state
+  btnAviator.disabled = true;
+  $('btnAviatorText').textContent = 'LAUNCHING... ⏳';
+  $('aviatorMsg').textContent = 'Preparing rocket for supersonic climb...';
+
+  try{
+    const startData = await api('/api/aviator/start', { bet: aviatorBet });
+    if(startData.status !== 'flying'){
+      btnAviator.disabled = false;
+      $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+      showModal('Broke!', 'Could not initiate takeoff.', '0', '#9c2f1e');
+      return;
+    }
+
+    updateSharedPoints(startData.new_points);
+    aviatorFlying = true;
+    aviatorFlyAway = false;
+    rocketParticles = [];
+    aviatorStartTime = performance.now();
+
+    $('aviatorMult').className = 'mult-val';
+    $('aviatorMult').textContent = '1.00x';
+    $('aviatorSub').textContent = 'FLIGHT IN PROGRESS...';
+    $('aviatorMsg').textContent = 'Cash out before the rocket crashes!';
+    btnAviator.className = 'btn fire';
+    btnAviator.disabled = false;
+    $('btnAviatorText').textContent = '💰 CASH OUT (+0 pts)';
+    $('btnAviatorSub').textContent = '1.00x';
+
+    startJetEngine();
+    haptic('impactOccurred','heavy');
+    startAviatorPolling();
+
+  }catch(e){
+    btnAviator.disabled = false;
+    $('btnAviatorText').textContent = 'TAKE OFF 🚀';
+    $('aviatorMsg').textContent = 'Error starting flight.';
+  }
+});
 
 /* ==========================================================
    GAME 4: SHOP (The Underground Points Market)
    ========================================================== */
 function renderShop(items, inventory){
   const catalog = $('shopCatalog');
+  if(!catalog) return;
   catalog.innerHTML = items.map(it => {
     const isOwned = inventory.includes(it.id);
     const isShield = it.type === 'shield' && userShield > 0;
@@ -1183,10 +1401,12 @@ function renderShop(items, inventory){
           playCash(); haptic('notificationOccurred','success');
           updateSharedPoints(d.new_points);
           if(d.shield) { userShield = 1; el.shieldTag.classList.add('active'); }
-          if(d.title) { userTitle = d.title; el.rank.textContent = `${userTitle} • #1`; }
-          btn.className = 'shop-btn owned';
-          btn.textContent = 'EQUIPPED / ACTIVE';
+          if(d.title) { userTitle = d.title; el.rank.textContent = `${userTitle} • #${d.rank || 1}`; }
+          if(!cachedInventory.includes(itemId)) cachedInventory.push(itemId);
+          renderShop(cachedShopItems, cachedInventory);
           showModal('Kharid Liya!', `Congratulations! ${d.item.name} aapke account me add ho gaya hai!`, `-${price} pts`, '#4f6b3a');
+        } else if(d.status === 'already_owned'){
+          showModal('Already Owned', d.message || 'Ye item aapke paas pehle se equipped hai!', '0 pts', '#4a2810');
         } else if(d.status === 'broke'){
           showModal('Broke Kid!', 'Points kam pad gaye!', '0', '#9c2f1e');
         }
@@ -1197,8 +1417,12 @@ function renderShop(items, inventory){
   });
 }
 
-// Kick off
+// Kick off user data loading
 loadUserData();
+
+// Initialize default tab safely AFTER all canvas, DOM and functions are declared!
+const initTab = qs.get('tab') || 'lobby';
+if(['lobby','roulette','slots','aviator','shop'].includes(initTab)) switchTab(initTab);
 </script>
 </body>
 </html>
