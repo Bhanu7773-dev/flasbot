@@ -704,6 +704,53 @@ def get_roulette_leaderboard(caller_id=None):
     except Exception as e:
         return f"Error loading leaderboard: {e}"
 
+def process_aviator_cashout(user_id):
+    with ROULETTE_LOCK:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cur = conn.cursor()
+            cur.execute("SELECT bet, crash_point, start_time FROM aviator_runs WHERE user_id = ?", (user_id,))
+            run_row = cur.fetchone()
+            if not run_row:
+                cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                p_row = cur.fetchone()
+                new_pts = p_row[0] if p_row else 0
+                conn.commit()
+                return 200, {"status": "no_run", "new_points": new_pts}
+
+            bet, crash_point, start_time = run_row[0], run_row[1], run_row[2]
+            cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
+            elapsed = max(0.0, time.time() - start_time)
+            m = round(math.exp(0.1 * elapsed), 2)
+
+            if m >= crash_point:
+                cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
+                cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                new_pts = cur.fetchone()[0]
+                conn.commit()
+                schedule_cloud_sync()
+                return 200, {
+                    "status": "crashed",
+                    "crash_point": crash_point,
+                    "new_points": new_pts
+                }
+            else:
+                winnings = int(bet * m)
+                net_profit = winnings - bet
+                cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (winnings, user_id))
+                cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
+                new_pts = cur.fetchone()[0]
+                conn.commit()
+                schedule_cloud_sync()
+                return 200, {
+                    "status": "cashed_out",
+                    "multiplier": m,
+                    "winnings": winnings,
+                    "net_profit": net_profit,
+                    "crash_point": crash_point,
+                    "new_points": new_pts
+                }
+
 # ---------------- KEEP-ALIVE HEALTH SERVER & TELEGRAM MINI-APP BACKEND ----------------
 MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "roulette_miniapp.html")
 
@@ -827,6 +874,23 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     self.send_json(200, {"status": "flying", "mult": m, "elapsed": elapsed})
                     return
 
+        if path == "/api/aviator/cashout":
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw_uid = qs.get("user_id", [None])[0]
+            token = qs.get("token", [None])[0]
+            try:
+                user_id = int(raw_uid) if raw_uid is not None else 0
+            except Exception:
+                user_id = 0
+
+            if not user_id or not token or not verify_user(user_id, token):
+                self.send_json(403, {"error": "unauthorized"})
+                return
+
+            code, resp = process_aviator_cashout(user_id)
+            self.send_json(code, resp)
+            return
+
         # Default root health check
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -843,7 +907,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
         path = urllib.parse.urlparse(self.path).path
 
-        if path in ["/api/spin", "/api/cashout", "/api/slots/spin", "/api/aviator/start", "/api/aviator/cashout", "/api/aviator/crashed", "/api/shop/buy"]:
+        if path in ["/api/spin", "/api/cashout", "/api/slots/spin", "/api/aviator/start", "/api/aviator/cashout", "/api/shop/buy", "/api/daily"]:
             raw_uid = body.get("user_id")
             token = body.get("token")
             try:
@@ -1109,51 +1173,9 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         return
 
             elif path == "/api/aviator/cashout":
-                with ROULETTE_LOCK:
-                    with sqlite3.connect(DB_PATH, timeout=10) as conn:
-                        conn.execute("BEGIN IMMEDIATE")
-                        cur = conn.cursor()
-                        cur.execute("SELECT bet, crash_point, start_time FROM aviator_runs WHERE user_id = ?", (user_id,))
-                        run_row = cur.fetchone()
-                        if not run_row:
-                            conn.commit()
-                            self.send_json(200, {"status": "no_run"})
-                            return
-
-                        bet, crash_point, start_time = run_row[0], run_row[1], run_row[2]
-                        cur.execute("DELETE FROM aviator_runs WHERE user_id = ?", (user_id,))
-                        elapsed = max(0.0, time.time() - start_time)
-                        m = round(math.exp(0.1 * elapsed), 2)
-
-                        if m >= crash_point:
-                            cur.execute("UPDATE roulette_scores SET losses = losses + 1 WHERE user_id = ?", (user_id,))
-                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
-                            new_pts = cur.fetchone()[0]
-                            conn.commit()
-                            schedule_cloud_sync()
-                            self.send_json(200, {
-                                "status": "crashed",
-                                "crash_point": crash_point,
-                                "new_points": new_pts
-                            })
-                            return
-                        else:
-                            winnings = int(bet * m)
-                            net_profit = winnings - bet
-                            cur.execute("UPDATE roulette_scores SET points = points + ?, wins = wins + 1 WHERE user_id = ?", (winnings, user_id))
-                            cur.execute("SELECT points FROM roulette_scores WHERE user_id = ?", (user_id,))
-                            new_pts = cur.fetchone()[0]
-                            conn.commit()
-                            schedule_cloud_sync()
-                            self.send_json(200, {
-                                "status": "cashed_out",
-                                "multiplier": m,
-                                "winnings": winnings,
-                                "net_profit": net_profit,
-                                "crash_point": crash_point,
-                                "new_points": new_pts
-                            })
-                            return
+                code, resp = process_aviator_cashout(user_id)
+                self.send_json(code, resp)
+                return
 
             elif path == "/api/daily":
                 now_ts = int(time.time())
