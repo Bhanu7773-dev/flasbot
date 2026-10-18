@@ -309,6 +309,17 @@ with sqlite3.connect(DB_PATH) as conn:
             purchased_at INTEGER,
             UNIQUE(user_id, item_id)
         );
+        CREATE TABLE IF NOT EXISTS user_identities (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT COLLATE NOCASE,
+            display_name TEXT,
+            updated_at INTEGER
+        );
+    """)
+    conn.execute("""
+        INSERT OR IGNORE INTO user_identities (user_id, display_name, updated_at)
+        SELECT user_id, user_name, CAST(strftime('%s', 'now') AS INTEGER)
+        FROM roulette_scores
     """)
     # Safe migration for existing DB
     cursor = conn.execute("PRAGMA table_info(messages)")
@@ -611,6 +622,106 @@ def clean_player_name(name):
     for ch in ['*', '_', '`', '[', ']', '(', ')', '~']:
         name = name.replace(ch, '')
     return name.strip() or "Player"
+
+def parse_points_amount(val_str):
+    """Parses numeric amount with optional k/m suffix or commas (e.g. 1000, 5k, 1m, 1,000, -500)."""
+    if not val_str:
+        return None
+    s = val_str.strip().replace(',', '').lower()
+    mult = 1
+    if s.endswith('k'):
+        mult = 1000
+        s = s[:-1]
+    elif s.endswith('m'):
+        mult = 1000000
+        s = s[:-1]
+    try:
+        val = float(s)
+        return int(val * mult)
+    except Exception:
+        return None
+
+def record_user_identity(user):
+    """Saves/updates a user's Telegram username and display name for mention and grant resolution."""
+    if not user or not getattr(user, 'id', None):
+        return
+    uid = user.id
+    uname = (getattr(user, 'username', '') or "").strip().lstrip("@").lower()
+    first = getattr(user, 'first_name', '') or ""
+    last = getattr(user, 'last_name', '') or ""
+    full = clean_player_name(f"{first} {last}".strip() or uname or "Player")
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            conn.execute(
+                """INSERT INTO user_identities (user_id, username, display_name, updated_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                   username = CASE WHEN excluded.username != '' THEN excluded.username ELSE user_identities.username END,
+                   display_name = excluded.display_name,
+                   updated_at = excluded.updated_at""",
+                (uid, uname, full, int(time.time()))
+            )
+    except Exception as e:
+        logging.error(f"Error recording user identity: {e}")
+
+def resolve_user_by_query(query_str):
+    """Resolves a user_id and display_name from a string which could be @username, username, or numeric user_id."""
+    clean = (query_str or "").strip().lstrip("@")
+    if not clean:
+        return None, None
+
+    # 1. Numeric user_id
+    if clean.isdigit():
+        uid = int(clean)
+        try:
+            with sqlite3.connect(DB_PATH, timeout=5) as conn:
+                r = conn.execute("SELECT user_name FROM roulette_scores WHERE user_id = ?", (uid,)).fetchone()
+                if r:
+                    return uid, clean_player_name(r[0])
+                r2 = conn.execute("SELECT display_name FROM user_identities WHERE user_id = ?", (uid,)).fetchone()
+                if r2:
+                    return uid, clean_player_name(r2[0])
+                return uid, f"User {uid}"
+        except Exception:
+            return uid, f"User {uid}"
+
+    # 2. Check user_identities by username or display_name
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            r = conn.execute("SELECT user_id, display_name FROM user_identities WHERE username = ? COLLATE NOCASE", (clean,)).fetchone()
+            if r:
+                return r[0], clean_player_name(r[1])
+            r = conn.execute("SELECT user_id, display_name FROM user_identities WHERE LOWER(display_name) = ? COLLATE NOCASE", (clean.lower(),)).fetchone()
+            if r:
+                return r[0], clean_player_name(r[1])
+            r = conn.execute("SELECT user_id, display_name FROM user_identities WHERE LOWER(display_name) LIKE ? COLLATE NOCASE LIMIT 1", (f"%{clean.lower()}%",)).fetchone()
+            if r:
+                return r[0], clean_player_name(r[1])
+    except Exception:
+        pass
+
+    # 3. Check roulette_scores by user_name (exact then LIKE)
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            r = conn.execute("SELECT user_id, user_name FROM roulette_scores WHERE LOWER(user_name) = ? COLLATE NOCASE", (clean.lower(),)).fetchone()
+            if r:
+                return r[0], clean_player_name(r[1])
+            r = conn.execute("SELECT user_id, user_name FROM roulette_scores WHERE LOWER(user_name) LIKE ? COLLATE NOCASE LIMIT 1", (f"%{clean.lower()}%",)).fetchone()
+            if r:
+                return r[0], clean_player_name(r[1])
+    except Exception:
+        pass
+
+    # 4. Check messages table by user_name
+    try:
+        with sqlite3.connect(DB_PATH, timeout=5) as conn:
+            r = conn.execute("SELECT user_id, user_name FROM messages WHERE user_id IS NOT NULL AND LOWER(user_name) LIKE ? ORDER BY id DESC LIMIT 1", (f"%{clean.lower()}%",)).fetchone()
+            if r and r[0]:
+                return r[0], clean_player_name(r[1])
+    except Exception:
+        pass
+
+    return None, None
 
 def get_or_create_roulette_player(user_id, user_name=""):
     safe_name = clean_player_name(user_name)[:32] if user_name else ""
@@ -1755,6 +1866,8 @@ def is_sender_master(message):
     """Detects Master Billu by Telegram username, ID, or fancy unicode display name."""
     if not message or not getattr(message, 'from_user', None):
         return False
+    if getattr(message.from_user, 'id', None) == 6056618592:
+        return True
     username = (message.from_user.username or "").lower().replace("@", "")
     if username in ["darkdevil7773b", "darkdevil7773"] or "darkdevil" in username:
         return True
@@ -2482,6 +2595,149 @@ def handle_manual_sync(message):
     schedule_cloud_sync()
     bot.reply_to(message, "☁️ *Cloud Database Synced to Telegram Backup!*", parse_mode="Markdown")
 
+@bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:grant)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
+def handle_grant_command(message):
+    """
+    MASTER-ONLY COMMAND: Grant/increase points for any player in the shared wallet.
+    Authorized ONLY for Master / Owner (@darkdevil7773 / 6056618592).
+
+    Usage:
+      • Reply to a message: /grant 1000 or /grant 5k
+      • By username mention: /grant 1000 @sid or /grant @sid 1000
+      • By numeric user ID: /grant 1000 6253557951
+      • Deduct points: /grant -500 @sid
+    """
+    if not is_sender_master(message):
+        bot.reply_to(
+            message,
+            "❌ *Abe chal nikal!* Sirf Master @darkdevil7773 points grant kar sakte hain! 🛑",
+            parse_mode="Markdown"
+        )
+        return
+
+    text = (message.text or "").strip()
+    args_str = re.sub(r'^[/\.!](?:grant)(?:@\w+)?\s*', '', text, flags=re.IGNORECASE).strip()
+
+    target_user_id = None
+    target_name = None
+    amount = None
+
+    # 1. Check if replying to a message
+    if message.reply_to_message and message.reply_to_message.from_user:
+        rep_u = message.reply_to_message.from_user
+        record_user_identity(rep_u)
+        target_user_id = rep_u.id
+        target_name = clean_player_name(rep_u.first_name or rep_u.username or "Player")
+
+    # 2. Check entities for text_mention or mention
+    mention_query = None
+    if message.entities:
+        for ent in message.entities:
+            if ent.type == "text_mention" and ent.user:
+                record_user_identity(ent.user)
+                target_user_id = ent.user.id
+                target_name = clean_player_name(ent.user.first_name or ent.user.username or "Player")
+                break
+            elif ent.type == "mention":
+                mention_query = text[ent.offset:ent.offset + ent.length].strip()
+
+    # 3. Parse tokens
+    tokens = args_str.split()
+    query_candidate = mention_query
+
+    for tok in tokens:
+        clean_tok = tok.strip()
+        parsed_amt = parse_points_amount(clean_tok)
+        if parsed_amt is not None and amount is None:
+            amount = parsed_amt
+            continue
+        if clean_tok.startswith('@') or (not query_candidate and not clean_tok.isdigit() and len(clean_tok) > 1):
+            query_candidate = clean_tok
+        elif clean_tok.isdigit() and len(clean_tok) >= 7 and target_user_id is None:
+            target_user_id = int(clean_tok)
+            target_name = f"User {target_user_id}"
+
+    # If query_candidate was provided, resolve it
+    if query_candidate:
+        r_uid, r_name = resolve_user_by_query(query_candidate)
+        if r_uid:
+            target_user_id = r_uid
+            target_name = r_name
+        elif not target_user_id:
+            bot.reply_to(
+                message,
+                f"❌ Target user `{clean_player_name(query_candidate)}` database me nahi mila!\n\n"
+                f"💡 *Tip:* Unhe bolo group me ek message bhejein ya `/games` kholein, ya unke message pe reply karke `/grant {amount or 1000}` likho.",
+                parse_mode="Markdown"
+            )
+            return
+
+    # Check if amount was provided
+    if amount is None:
+        bot.reply_to(
+            message,
+            "👑 *Master Points Grant*\n\n"
+            "⚠️ *Points amount missing!*\n\n"
+            "*Usage Options:*\n"
+            "• Reply to message: `/grant 1000` (ya `/grant 5k`)\n"
+            "• By username: `/grant 1000 @username`\n"
+            "• By user ID: `/grant 1000 <user_id>`\n"
+            "• Deduct points: `/grant -500 @username`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Check if target is missing
+    if not target_user_id:
+        bot.reply_to(
+            message,
+            "⚠️ *Target player missing!*\n\n"
+            "Kisi user ke message pe reply karo ya username mention karo:\n"
+            "• `/grant 1000 @username`\n"
+            "• Ya unke message pe reply karke likho: `/grant 1000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Prevent granting to bot itself
+    try:
+        bot_info = bot.get_me()
+        if target_user_id == bot_info.id:
+            bot.reply_to(message, "🤖 Flash bot ko points deke kya karega Master? Kisi real player ko do!", parse_mode="Markdown")
+            return
+    except Exception:
+        pass
+
+    # Ensure player exists in roulette_scores
+    target_name = target_name or "Player"
+    player = get_or_create_roulette_player(target_user_id, target_name)
+
+    # Perform atomic update with ROULETTE_LOCK
+    with ROULETTE_LOCK:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cur = conn.cursor()
+            cur.execute("UPDATE roulette_scores SET points = MAX(0, points + ?) WHERE user_id = ?", (amount, target_user_id))
+            cur.execute("SELECT points, user_name FROM roulette_scores WHERE user_id = ?", (target_user_id,))
+            row = cur.fetchone()
+            conn.commit()
+        schedule_cloud_sync()
+
+    new_points = row[0] if row else max(0, player["points"] + amount)
+    final_name = clean_player_name(row[1] if row else target_name)
+    sign = "+" if amount >= 0 else ""
+    action_text = "Badha diye gaye" if amount >= 0 else "Kam kar diye gaye"
+
+    resp_text = (
+        f"👑 *MASTER GRANT APPROVED!*\n\n"
+        f"👤 *Player:* {final_name} (`{target_user_id}`)\n"
+        f"💰 *Points:* `{sign}{amount:,} pts` ({action_text})\n"
+        f"💳 *New Wallet Balance:* `{new_points:,} pts`\n"
+        f"⚡ *Authorized By:* Master @darkdevil7773\n\n"
+        f"🎮 Points have been synchronized in real-time across Russian Roulette, Slots, and Aviator! 🚀"
+    )
+    bot.reply_to(message, resp_text, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda msg: msg.text and re.match(r'^[/\.!](?:compare)(?:@\w+)?(?:\s+.*)?$', msg.text.strip(), flags=re.IGNORECASE), content_types=['text'])
 def handle_compare_command(message):
     """
@@ -2902,6 +3158,11 @@ def handle_group_message(message):
             reply_to_user_id = rep_user.id
             rep_name = rep_user.first_name or "Someone"
         rep_text = sanitize_for_ai(reply_to_text)
+        if rep_user:
+            record_user_identity(rep_user)
+
+    if message.from_user:
+        record_user_identity(message.from_user)
 
     # 1. Silently record all conversation
     save_chat_message(
