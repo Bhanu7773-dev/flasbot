@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Flash Games Hub</title>
+<title>Volt Games Hub</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -318,7 +318,7 @@ body{
   <!-- TAB 0: LOBBY / GAMES SELECTOR -->
   <div class="tab-pane active" id="pane-lobby">
     <div class="lobby-header">
-      <h2>FLASH CASINO HUB</h2>
+      <h2>VOLT CASINO HUB</h2>
       <p>Choose an option below • Shared Points Wallet</p>
     </div>
 
@@ -546,7 +546,7 @@ const tg = window.Telegram?.WebApp;
 if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#1f130a'); tg.setBackgroundColor('#1f130a'); } catch(e){} }
 
 /* --- AUDIO ENGINE (Web Audio API Synthesizer) --- */
-let soundMuted = localStorage.getItem('flash_mute') === 'true';
+let soundMuted = (localStorage.getItem('volt_mute') || localStorage.getItem('flash_mute')) === 'true';
 const AC = window.AudioContext || window.webkitAudioContext;
 let actx=null, master=null, verb=null;
 function ctx(){
@@ -688,7 +688,7 @@ el.mBtn.addEventListener('click', ()=>el.modal.classList.remove('show'));
 
 el.audioBtn.addEventListener('click', ()=>{
   soundMuted = !soundMuted;
-  localStorage.setItem('flash_mute', soundMuted);
+  localStorage.setItem('volt_mute', soundMuted);
   el.audioBtn.textContent = soundMuted ? '🔇' : '🔊';
   if(master) master.gain.value = soundMuted ? 0 : 0.85;
 });

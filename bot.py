@@ -52,7 +52,7 @@ load_dotenv_file()
 import random
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-APP_SECRET = hashlib.sha256(("flash:" + TELEGRAM_BOT_TOKEN).encode()).digest()
+APP_SECRET = hashlib.sha256(("volt:" + TELEGRAM_BOT_TOKEN).encode()).digest()
 
 def sign_user(user_id, ttl=12*3600):
     exp = int(time.time()) + ttl
@@ -81,7 +81,7 @@ GROQ_MODELS = [
     "openai/gpt-oss-120b"
 ]
 
-BOT_NAMES = ["flash"]
+BOT_NAMES = ["volt"]
 CHANNEL_USERNAME = "rm6785dumppAss"
 CHANNEL_ID = -1003087244808
 
@@ -256,7 +256,12 @@ def get_uptime_string():
         parts.append(f"{minutes}m")
     parts.append(f"{seconds}s")
     return " ".join(parts)
-DB_PATH = "flash_memory.db"
+DB_PATH = "volt_memory.db"
+if os.path.exists("flash_memory.db") and not os.path.exists("volt_memory.db"):
+    try:
+        os.rename("flash_memory.db", "volt_memory.db")
+    except Exception:
+        DB_PATH = "flash_memory.db"
 # -------------------------------------------------
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -450,7 +455,7 @@ def sync_to_telegram_cloud():
             inventories.append({"user_id": ir[0], "item_id": ir[1], "purchased_at": ir[2]})
 
         payload = {
-            "app": "flash_casino_cloud_backup",
+            "app": "volt_casino_cloud_backup",
             "updated_at": int(time.time()),
             "total_players": len(players),
             "players": players,
@@ -467,7 +472,7 @@ def sync_to_telegram_cloud():
         new_doc_msg = bot.send_document(
             BACKUP_CHAT_ID,
             bio,
-            caption=f"📦 *FLASH CLOUD DATABASE BACKUP*\n`{ts}`\nTotal Players: {len(players)}",
+            caption=f"📦 *VOLT CLOUD DATABASE BACKUP*\n`{ts}`\nTotal Players: {len(players)}",
             parse_mode="Markdown"
         )
         bot.pin_chat_message(BACKUP_CHAT_ID, new_doc_msg.message_id, disable_notification=True)
@@ -501,7 +506,7 @@ def restore_from_telegram_cloud():
             file_info = bot.get_file(pinned.document.file_id)
             file_bytes = bot.download_file(file_info.file_path)
             data = json.loads(file_bytes.decode("utf-8"))
-        elif pinned.text and "FLASH CLOUD DATABASE BACKUP" in pinned.text:
+        elif pinned.text and ("VOLT CLOUD DATABASE BACKUP" in pinned.text or "FLASH CLOUD DATABASE BACKUP" in pinned.text):
             text = pinned.text
             start = text.find("{")
             end = text.rfind("}")
@@ -1006,7 +1011,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Flash Bot is ONLINE 24/7! Status: 100% HEALTHY.")
+        self.wfile.write(b"Volt Bot is ONLINE 24/7! Status: 100% HEALTHY.")
 
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
@@ -1472,7 +1477,7 @@ def get_reply_thread_chain(chat_id, start_msg_id, limit=8):
 
 def get_user_thread_history(chat_id, user_id, user_name, limit=10):
     """
-    Fetches the recent conversation strictly between this specific user and Flash.
+    Fetches the recent conversation strictly between this specific user and Volt.
     Completely excludes other group members and other conversations.
     Returns list of (user_name, message_text) in chronological order (oldest first).
     """
@@ -1485,8 +1490,8 @@ def get_user_thread_history(chat_id, user_id, user_name, limit=10):
                            WHERE chat_id = ? 
                              AND (
                                  user_id = ? 
-                                 OR (user_name = 'Flash' AND reply_to_user_id = ?)
-                                 OR (user_name = 'Flash' AND reply_to_msg_id IN (
+                                 OR (user_name IN ('Volt', 'Flash') AND reply_to_user_id = ?)
+                                 OR (user_name IN ('Volt', 'Flash') AND reply_to_msg_id IN (
                                      SELECT message_id FROM messages WHERE chat_id = ? AND user_id = ?
                                  ))
                              )
@@ -1498,7 +1503,7 @@ def get_user_thread_history(chat_id, user_id, user_name, limit=10):
                 rows = conn.execute(
                     """SELECT user_name, message_text FROM (
                            SELECT id, user_name, message_text FROM messages
-                           WHERE chat_id = ? AND (user_name = ? OR user_name = 'Flash')
+                           WHERE chat_id = ? AND (user_name = ? OR user_name IN ('Volt', 'Flash'))
                            ORDER BY id DESC LIMIT ?
                        ) ORDER BY id ASC""",
                     (chat_id, user_name, limit)
@@ -1512,7 +1517,7 @@ def get_conversation_thread(chat_id, user_id, user_name, reply_to_msg_id=None, l
     """
     Gets the most accurate thread:
     1. If user replied in a reply-chain, trace the exact chain backwards.
-    2. Combine with the clean user <-> Flash direct conversation history.
+    2. Combine with the clean user <-> Volt direct conversation history.
     Never includes unrelated messages from other users.
     """
     chain = get_reply_thread_chain(chat_id, reply_to_msg_id, limit=limit)
@@ -1632,7 +1637,7 @@ def is_explicit_file_request(text, reply_to_text=None):
             return False
 
     # Standalone non-file words: "kro", "kar", "chup", "bol", "oye", "sun", "haan", "nahi"
-    if re.fullmatch(r'(flash\s+)?(kro|karo|kar|oye|sun|bol|bata|chup|ha|haan|nahi|no|yes)\b', t):
+    if re.fullmatch(r'(volt\s+)?(kro|karo|kar|oye|sun|bol|bata|chup|ha|haan|nahi|no|yes)\b', t):
         return False
 
     # 2. FILE INTENT WORDS (asking to receive or download)
@@ -1882,12 +1887,12 @@ def is_sender_master(message):
     return False
 
 def should_respond(message, bot_username):
-    """Strict trigger: ONLY responds to the exact name 'flash' (or direct replies / private chat)."""
+    """Strict trigger: ONLY responds to the exact name 'volt' (or direct replies / private chat)."""
     # Private chat: always respond
     if getattr(message.chat, 'type', None) == 'private':
         return True
 
-    # Reply to Flash's own message
+    # Reply to Volt's own message
     if message.reply_to_message and message.reply_to_message.from_user:
         if message.reply_to_message.from_user.is_bot:
             if (message.reply_to_message.from_user.username or "").lower() == bot_username.lower():
@@ -1898,19 +1903,9 @@ def should_respond(message, bot_username):
     if not t:
         return False
 
-    # Filter out technical verb usage (e.g. 'I gotta flash it?', 'can i flash', 'flash rom')
-    verb_patterns = [
-        r"\b(to|can\s+i|should\s+i|how\s+to|clean|dirty|dont|don't|gotta|gonna|need\s+to|have\s+to|wanna|want\s+to|will|do\s+i|shall\s+i|must)\s+flash\b",
-        r"\bflash\s+(it|this|that|them|here|karna|kare|karega|karegi|karu|karu\s+kya|karo|firmware|rom|kernel|zip|img|module|partition|via|with|on|in|file|package)\b",
-        r"\b(flash\s+kar\w*|kar\w*\s+flash)\b",
-        r"\bflash(ing|able|ed)\b"
-    ]
-    for vp in verb_patterns:
-        if re.search(vp, t):
-            return False
-
-    # ONLY reacts if the word "flash" is explicitly present in message
-    if re.search(r"\bflash\b", t):
+    # ONLY reacts if the word "volt" is explicitly present in message as a standalone word
+    # Does NOT react to "flash"
+    if re.search(r"\bvolt\b", t):
         return True
 
     return False
@@ -1934,7 +1929,7 @@ def sanitize_for_ai(txt):
         return ""
     return re.sub(r"\bnigg[ae]r?s?\b", "guy", str(txt), flags=re.IGNORECASE)
 
-SYSTEM_PROMPT = """You are Flash, a regular member of an Android ROM and custom-recovery Telegram group (Realme 6/7, RM6785).
+SYSTEM_PROMPT = """You are Volt, a regular member of an Android ROM and custom-recovery Telegram group (Realme 6/7, RM6785).
 You are a sharp, friendly, quick-witted guy chatting like a real person: short, natural, casual messages. Vary your style.
 Billu bhai (Void, @darkdevil7773b) is the admin. Be respectful to him.
 
@@ -1967,19 +1962,19 @@ FEW_SHOTS = [
     {"role": "assistant", "content": "Na phone ka naam, na ROM ka naam, bas 'jaldi' chahiye. Pehle sawaal likh mkc."},
     {"role": "user", "content": "Sender: Billu\nMode: ROAST\nTarget: Aniket\nMessage to roast: \".ok\""},
     {"role": "assistant", "content": "'.ok' likhne ke liye keyboard kholne ki zaroorat bhi nahi thi, gandu."},
-    {"role": "user", "content": "Recent chat (oldest first):\nBoss (Billu bhai): flash roast me\nFlash: Billu bhai, roast maang rahe ho aur khud hi 'hi flash' likh rahe ho, thoda dimaag laga lo!\nBoss (Billu bhai): flash roast anjali\nFlash: Anjali ne group me ek message nahi bheja, hawa me kis baat pe pelu usko?\nBoss (Billu bhai): kya bola upr tumne\nFlash: Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.\n\nThe sender is replying to Flash's message: 'Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.'\nSender: Boss (Billu bhai)\nLatest message to answer: iske pehle kay bolra tha\nMode: ANSWER"},
-    {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai, roast maang rahe ho aur khud hi hi flash likh rahe ho, thoda dimaag laga lo!'"},
+    {"role": "user", "content": "Recent chat (oldest first):\nBoss (Billu bhai): volt roast me\nVolt: Billu bhai, roast maang rahe ho aur khud hi 'hi volt' likh rahe ho, thoda dimaag laga lo!\nBoss (Billu bhai): volt roast anjali\nVolt: Anjali ne group me ek message nahi bheja, hawa me kis baat pe pelu usko?\nBoss (Billu bhai): kya bola upr tumne\nFlash: Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.\n\nThe sender is replying to Flash's message: 'Maine bola ki Anjali ne kuch nahi bola toh roast kahan se karu.'\nSender: Boss (Billu bhai)\nLatest message to answer: iske pehle kay bolra tha\nMode: ANSWER"},
+    {"role": "assistant", "content": "Iske pehle maine bola tha: 'Billu bhai, roast maang rahe ho aur khud hi hi volt likh rahe ho, thoda dimaag laga lo!'"},
     {"role": "user", "content": "Sender: Aman\nMessage: can i flash without unlocking bootloader\nMode: ROAST"},
     {"role": "assistant", "content": "Bootloader unlock kiye bina flash karega? Dimaag ghar pe bhool ke aaya hai kya bc?"},
     {"role": "user", "content": "Sender: Vicky\nMessage: mujhe recovery flash karke do jaldi teamviewer pe\nMode: ROAST"},
     {"role": "assistant", "content": "TeamViewer pe recovery flash karwayega? /give recovery likh aur chupchap khud kar gandu."},
     {"role": "user", "content": "Sender: Sid\nMessage: bootloop ho gaya help\nMode: ANSWER"},
     {"role": "assistant", "content": "Pehle bata kaunsa zip aur kaunsi recovery flash ki. Bina info ke koi kuch nahi bata sakta."},
-    {"role": "user", "content": "Sender: Light Angel\nReplying to Flash: 'Yeh description bas simple instructions hai'\nMessage: Kaha hain\nMode: ANSWER"},
+    {"role": "user", "content": "Sender: Light Angel\nReplying to Volt: 'Yeh description bas simple instructions hai'\nMessage: Kaha hain\nMode: ANSWER"},
     {"role": "assistant", "content": "Description bot ki profile mein hai, uska naam tap karke upar dekh le."},
     {"role": "user", "content": "Sender: Jack\nMessage: pbrp recovery\nMode: ANSWER"},
     {"role": "assistant", "content": "/give pbrp likh, file aur link dono mil jayenge."},
-    {"role": "user", "content": "Sender: Boss (Billu bhai)\nMessage: kya scene hai flash\nMode: CHAT"},
+    {"role": "user", "content": "Sender: Boss (Billu bhai)\nMessage: kya scene hai volt\nMode: CHAT"},
     {"role": "assistant", "content": "Sab badhiya Billu bhai, aap bolo kuch karna hai?"},
 ]
 
@@ -2222,7 +2217,7 @@ def handle_start_command(message):
     # If launched from a group shortcut link (e.g. /start games)
     if any(k in cmd_text for k in ["games", "roulette", "slots", "aviator", "crash", "shop"]):
         games_launch_text = (
-            f"🎮 *FLASH GAMES HUB* 🎰\n"
+            f"🎮 *VOLT GAMES HUB* 🎰\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 *Player:* {safe_name}\n"
             f"🎖️ *Rank Type:* `{player['title']}`\n"
@@ -2233,7 +2228,7 @@ def handle_start_command(message):
         return
 
     welcome_text = (
-        f"⚡ *Hey {safe_name}! Welcome to Flash Bot!* ⚡\n"
+        f"⚡ *Hey {safe_name}! Welcome to Volt Bot!* ⚡\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Rank Title:* `{player['title']}`\n"
         f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
@@ -2275,7 +2270,7 @@ def handle_games_command(message):
     shield_status = "🛡️ Active" if player.get("shield") else "None"
 
     games_text = (
-        f"🎮 *FLASH GAMES HUB* 🎰\n"
+        f"🎮 *VOLT GAMES HUB* 🎰\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"🎖️ *Rank Type:* `{player['title']}`\n"
@@ -2338,7 +2333,7 @@ def handle_roulette_command(message):
         markup.add(btn_pm)
 
     intro_text = (
-        f"🎰 *FLASH RUSSIAN ROULETTE* 🔫\n"
+        f"🎰 *VOLT RUSSIAN ROULETTE* 🔫\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"💰 *Wallet Balance:* `{player['points']} pts` | Streak: `{player['streak']}🔥`\n\n"
@@ -2371,7 +2366,7 @@ def handle_slots_command(message):
         markup.add(btn_pm)
 
     slots_text = (
-        f"🎰 *FLASH CASINO SLOTS* 🍒\n"
+        f"🎰 *VOLT CASINO SLOTS* 🍒\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"💰 *Shared Wallet:* `{player['points']} pts`\n\n"
@@ -2405,7 +2400,7 @@ def handle_aviator_command(message):
         markup.add(btn_pm)
 
     aviator_text = (
-        f"🚀 *FLASH AVIATOR / CRASH* 💥\n"
+        f"🚀 *VOLT AVIATOR / CRASH* 💥\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"💰 *Shared Wallet:* `{player['points']} pts`\n\n"
@@ -2513,7 +2508,7 @@ def handle_balance_command(message):
     rank_icon = "👑" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank <= 10 else "🎖️"
 
     bal_text = (
-        f"💳 *FLASH CASINO WALLET & STATS*\n"
+        f"💳 *VOLT CASINO WALLET & STATS*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"👤 *Player:* {safe_name}\n"
         f"🎖️ *VIP Title:* `{title}`\n"
@@ -2703,7 +2698,7 @@ def handle_grant_command(message):
     try:
         bot_info = bot.get_me()
         if target_user_id == bot_info.id:
-            bot.reply_to(message, "🤖 Flash bot ko points deke kya karega Master? Kisi real player ko do!", parse_mode="Markdown")
+            bot.reply_to(message, "🤖 Volt bot ko points deke kya karega Master? Kisi real player ko do!", parse_mode="Markdown")
             return
     except Exception:
         pass
@@ -2955,7 +2950,7 @@ def find_user_name(chat_id, tquery):
         with sqlite3.connect(DB_PATH) as conn:
             row = conn.execute(
                 """SELECT user_name FROM messages 
-                   WHERE chat_id = ? AND user_name != 'Flash' AND lower(user_name) LIKE ?
+                   WHERE chat_id = ? AND user_name NOT IN ('Volt', 'Flash') AND lower(user_name) LIKE ?
                    ORDER BY id DESC LIMIT 1""",
                 (chat_id, f"%{tquery.lower()}%")
             ).fetchone()
@@ -2969,7 +2964,7 @@ def get_user_messages(chat_id, name_query, limit=6):
         with sqlite3.connect(DB_PATH) as conn:
             rows = conn.execute(
                 """SELECT message_text FROM messages
-                   WHERE chat_id=? AND user_name != 'Flash'
+                   WHERE chat_id=? AND user_name NOT IN ('Volt', 'Flash')
                    AND lower(user_name) LIKE ?
                    ORDER BY id DESC LIMIT ?""",
                 (chat_id, f"%{name_query.lower()}%", limit)).fetchall()
@@ -2986,7 +2981,7 @@ def resolve_roast_target(text, message, user_name):
     # 2. "roast me"
     if re.search(r'\broast\s+me\b', t):
         return user_name, user_name
-    # 3. "roast anjali" or "flash roast anjali"
+    # 3. "roast anjali" or "volt roast anjali"
     m = re.search(r'\b(?:roast|pel|baja)\s+(\w+)', t)
     if m and m.group(1) not in ("him", "her", "isko", "usko", "me"):
         return m.group(1).title(), m.group(1)
@@ -3175,7 +3170,7 @@ def handle_group_message(message):
         reply_to_user_id=reply_to_user_id
     )
 
-    # 2. Check if the user addressed Flash
+    # 2. Check if the user addressed Volt
     bot_info = bot.get_me()
     if should_respond(message, bot_info.username):
         if message.chat.type != 'private':
@@ -3217,7 +3212,7 @@ def handle_group_message(message):
                     reply += "\n\n⚠️ Download sirf official source se karo."
                     sent = bot.reply_to(message, reply[:4000], disable_web_page_preview=True)
                     mark_reply(chat_id)
-                    save_chat_message(chat_id=chat_id, user_name="Flash", text=reply[:500],
+                    save_chat_message(chat_id=chat_id, user_name="Volt", text=reply[:500],
                                       user_id=bot_info.id, message_id=getattr(sent, "message_id", None),
                                       reply_to_msg_id=message_id, reply_to_user_id=user_id)
                     return
@@ -3272,7 +3267,7 @@ def handle_group_message(message):
                     roast_fail_msg = call_ai(SYSTEM_PROMPT, no_mat_prompt, mode="CHAT") or "🤔"
                 bot.reply_to(message, roast_fail_msg)
                 mark_reply(chat_id)
-                save_chat_message(chat_id, "Flash", roast_fail_msg)
+                save_chat_message(chat_id, "Volt", roast_fail_msg)
                 return
 
             parts.append(
@@ -3307,7 +3302,7 @@ def handle_group_message(message):
             sent_msg_id = getattr(sent_msg, 'message_id', None)
             save_chat_message(
                 chat_id=chat_id,
-                user_name="Flash",
+                user_name="Volt",
                 text=reply,
                 user_id=bot_id,
                 message_id=sent_msg_id,
@@ -3335,7 +3330,7 @@ def handle_group_message(message):
             sent_msg_id = getattr(sent_msg, 'message_id', None)
             save_chat_message(
                 chat_id=chat_id,
-                user_name="Flash",
+                user_name="Volt",
                 text=reply,
                 user_id=bot_id,
                 message_id=sent_msg_id,
@@ -3355,10 +3350,10 @@ if __name__ == "__main__":
     print(f"  Cataloged    : {len(ALL_ROMS)} files from @{CHANNEL_USERNAME}")
     print("  AI Engines   : Groq LPU (Primary) + 4x OpenRouter + Google Gemini (Triple Fallback)")
     print(f"  Trigger Names: {', '.join(BOT_NAMES)}")
-    print("  Verb Filter  : Active ('to flash', 'flash firmware' ignored)")
+    print("  Trigger Name : Active ('volt' is the listening trigger)")
     print("  Firmware     : RUI2 (RM6785) vs RUI3 (salaa) Strict Matcher")
     print("=" * 50)
-    print("Flash is running at 100% MAXIMUM ACCURACY! [ONLINE]")
+    print("Volt is running at 100% MAXIMUM ACCURACY! [ONLINE]")
     while True:
         try:
             bot.infinity_polling(timeout=20, long_polling_timeout=20)
